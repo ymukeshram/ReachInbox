@@ -3,19 +3,20 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const isNeon = (process.env.DATABASE_URL || '').includes('neon.tech');
+
 export const pool = new Pool(
   process.env.DATABASE_URL
     ? {
         connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false },
-        max: 20, // Maximum pool size
-        min: 2, // Minimum pool size
+        ssl: { rejectUnauthorized: isNeon }, // Neon has valid cert; others may not
+        max: 10,
+        min: 0,
         idleTimeoutMillis: 30_000,
-        connectionTimeoutMillis: 10_000, // Reduced from 60s to 10s
-        statement_timeout: 30_000, // Reduced from 60s to 30s
-        query_timeout: 30_000, // Reduced from 60s to 30s
-        // Enable prepared statements for better performance
-        allowExitOnIdle: false
+        connectionTimeoutMillis: 30_000,
+        statement_timeout: 30_000,
+        query_timeout: 30_000,
+        allowExitOnIdle: false,
       }
     : {
         host: process.env.DB_HOST,
@@ -23,10 +24,10 @@ export const pool = new Pool(
         user: process.env.DB_USER,
         password: process.env.DB_PASSWORD,
         database: process.env.DB_NAME,
-        max: 20,
-        min: 2,
+        max: 10,
+        min: 0,
         idleTimeoutMillis: 30_000,
-        connectionTimeoutMillis: 10_000
+        connectionTimeoutMillis: 30_000,
       }
 );
 
@@ -40,9 +41,9 @@ pool.on('connect', (client) => {
 pool.on('remove', () => console.log('Database client removed from pool'));
 
 export async function initDatabase() {
-  let retries = 3; // Reduced from 5
+  let retries = 8; // enough for Render free-tier cold start (~30-40s)
   let client;
-  
+
   while (retries > 0) {
     try {
       console.log('Attempting to connect to database...');
@@ -53,8 +54,8 @@ export async function initDatabase() {
       retries--;
       if (retries === 0) throw err;
       console.log(`Database connection failed: ${err.message}`);
-      console.log(`Retrying in 2 seconds... (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Reduced to 2 seconds
+      console.log(`Retrying in 5 seconds... (${retries} attempts left)`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
   }
   

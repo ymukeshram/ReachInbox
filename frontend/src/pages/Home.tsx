@@ -11,186 +11,262 @@ function Home() {
   const [isVisible, setIsVisible] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'professional' | 'enterprise' | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   useEffect(() => {
     setIsVisible(true);
     const handleScroll = () => setScrollY(window.scrollY);
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   const features = [
     {
-      icon: '🚀',
-      title: 'Lightning Fast',
-      description: 'Send 10,000 emails faster than you can say "unsubscribe". Our servers don\'t sleep, even if you should.',
-      color: 'from-blue-500 to-cyan-500'
-    },
-    {
-      icon: '🎯',
+      icon: (
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      ),
       title: 'Smart Scheduling',
-      description: 'Schedule emails for 3 AM because apparently that\'s when people check their inbox. (Spoiler: They don\'t.)',
-      color: 'from-purple-500 to-pink-500'
+      description: 'Schedule thousands of emails in advance with precise timing controls. Set start times, inter-email delays, and hourly caps to stay within provider limits.',
+      color: 'from-blue-500 to-cyan-500',
+      bg: 'bg-blue-50 dark:bg-blue-900/20',
+      text: 'text-blue-600 dark:text-blue-400',
     },
     {
-      icon: '📊',
+      icon: (
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      ),
       title: 'Real-time Analytics',
-      description: 'Watch your open rates in real-time. It\'s like Netflix, but for disappointment. (JK, our avg open rate is 35%)',
-      color: 'from-green-500 to-emerald-500'
+      description: 'Track open rates, click rates, bounces, and delivery stats in real-time. Get actionable insights with beautiful charts and campaign-level breakdowns.',
+      color: 'from-purple-500 to-pink-500',
+      bg: 'bg-purple-50 dark:bg-purple-900/20',
+      text: 'text-purple-600 dark:text-purple-400',
     },
     {
-      icon: '🔒',
-      title: 'Enterprise Security',
-      description: 'Bank-level encryption. Because your "Buy Now!" emails deserve the same security as nuclear codes.',
-      color: 'from-red-500 to-orange-500'
+      icon: (
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      ),
+      title: 'Contact Management',
+      description: 'Import contacts from CSV, tag and segment them, auto-suppress unsubscribes and hard bounces so your list stays clean and your sender score stays high.',
+      color: 'from-green-500 to-emerald-500',
+      bg: 'bg-green-50 dark:bg-green-900/20',
+      text: 'text-green-600 dark:text-green-400',
     },
     {
-      icon: '⚡',
-      title: 'Bulk Operations',
-      description: 'Cancel 1,000 emails with one click. Perfect for when you realize it\'s a typo in the subject line.',
-      color: 'from-yellow-500 to-amber-500'
+      icon: (
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+      ),
+      title: 'Follow-up Sequences',
+      description: 'Build multi-step email sequences that automatically follow up with leads. Set delays between steps and let Reachify handle the entire nurture journey.',
+      color: 'from-orange-500 to-red-500',
+      bg: 'bg-orange-50 dark:bg-orange-900/20',
+      text: 'text-orange-600 dark:text-orange-400',
     },
     {
-      icon: '🎨',
-      title: 'Personalization',
-      description: 'Add {{name}} to make it personal. They\'ll totally believe you wrote it just for them. (They won\'t.)',
-      color: 'from-indigo-500 to-purple-500'
-    }
+      icon: (
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      ),
+      title: 'Spam Score Checker',
+      description: 'Get a real-time spam analysis of your subject line and body before sending. Our AI flags risky patterns so your emails land in the inbox, not spam.',
+      color: 'from-yellow-500 to-amber-500',
+      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+      text: 'text-yellow-600 dark:text-yellow-400',
+    },
+    {
+      icon: (
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+        </svg>
+      ),
+      title: 'SMTP Rotation',
+      description: 'Connect multiple SMTP accounts and Reachify automatically rotates between them to distribute sending load, improve deliverability, and avoid rate limits.',
+      color: 'from-indigo-500 to-purple-500',
+      bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+      text: 'text-indigo-600 dark:text-indigo-400',
+    },
   ];
 
   const stats = [
-    { value: '10M+', label: 'Emails Sent', icon: '📧' },
-    { value: '99.9%', label: 'Uptime', icon: '⚡' },
-    { value: '500+', label: 'Happy Users', icon: '👥' },
-    { value: '<100ms', label: 'API Speed', icon: '🚀' }
+    { value: '10M+', label: 'Emails Delivered' },
+    { value: '99.9%', label: 'Platform Uptime' },
+    { value: '35%', label: 'Avg Open Rate' },
+    { value: '<100ms', label: 'API Response' },
+  ];
+
+  const steps = [
+    {
+      num: '01',
+      title: 'Upload Your List',
+      desc: 'Import a CSV or TXT file with email addresses. Add columns like name, company, role — Reachify auto-fills them into your email template.',
+    },
+    {
+      num: '02',
+      title: 'Compose & Schedule',
+      desc: 'Write your email, set a start time, configure sending rate and hourly limits. Our spam checker flags issues before you hit send.',
+    },
+    {
+      num: '03',
+      title: 'Track & Optimise',
+      desc: 'Monitor deliveries, opens, and bounces in real-time. Hard bounces and unsubscribes are auto-suppressed to keep your sender reputation clean.',
+    },
   ];
 
   const testimonials = [
     {
       name: 'Priya Sharma',
       role: 'Marketing Director, TechCorp India',
-      content: 'Finally, I can schedule emails at 2 AM without actually being awake at 2 AM. Life-changing? No. Convenient? Absolutely.',
-      avatar: '👩‍💼'
+      content: 'Reachify cut our outbound setup time from hours to minutes. Scheduling a 5,000-email campaign is now a 2-minute job. The spam checker alone saved us from a deliverability disaster.',
+      initials: 'PS',
+      color: 'from-blue-500 to-purple-500',
     },
     {
       name: 'Rahul Verma',
       role: 'CEO, StartupHub',
-      content: 'I used to pay $299/month for Mailchimp. Now I pay ₹3,999 and get the same features. My CFO loves me again.',
-      avatar: '👨‍💼'
+      content: 'We switched from Mailchimp and cut our monthly email bill by 70%. Reachify has all the features we need — scheduling, analytics, bounce management — at a price that makes sense for an Indian startup.',
+      initials: 'RV',
+      color: 'from-green-500 to-teal-500',
     },
     {
       name: 'Anita Desai',
       role: 'Growth Lead, E-commerce Plus',
-      content: 'The analytics told me 90% of people don\'t open my emails. Brutal honesty. But hey, at least now I know.',
-      avatar: '👩‍💻'
-    }
+      content: 'The SMTP rotation feature is a game changer. We connect three Gmail accounts and Reachify spreads the load automatically. Our deliverability went up 20% in the first week.',
+      initials: 'AD',
+      color: 'from-orange-500 to-red-500',
+    },
+  ];
+
+  const faqs = [
+    {
+      q: 'How is Reachify different from Mailchimp or SendGrid?',
+      a: 'Reachify is built specifically for cold outreach and bulk scheduling with your own SMTP accounts. You\'re not paying for a sending infrastructure you don\'t control — you bring your own Gmail, Outlook, or custom SMTP and Reachify handles the scheduling, personalisation, bounce tracking, and analytics.',
+    },
+    {
+      q: 'Can I use my existing Gmail or Outlook account?',
+      a: 'Yes. Add your Gmail (via App Password), Outlook, or any SMTP-compatible provider under SMTP Settings. Reachify will use it to send emails on your behalf. You can add multiple accounts and enable automatic rotation.',
+    },
+    {
+      q: 'What happens to unsubscribes and bounced emails?',
+      a: 'Every email automatically includes an unsubscribe link. When a contact unsubscribes or hard-bounces, they are permanently suppressed from all future campaigns — no manual cleanup needed.',
+    },
+    {
+      q: 'Is there a free plan?',
+      a: 'Yes. The Starter plan is free forever and includes 1,000 emails/month, analytics, CSV upload, and full dashboard access. No credit card required.',
+    },
+    {
+      q: 'Are prices in Indian Rupees?',
+      a: 'Yes. All plans are priced in INR and payments are processed via Razorpay. GST is applicable as per Indian tax laws.',
+    },
+    {
+      q: 'How does personalisation work?',
+      a: 'Include columns like first_name, last_name, company, role in your CSV. Then use {{first_name}}, {{company}} etc. in your subject or body — Reachify replaces them for each recipient automatically.',
+    },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900 transition-colors duration-500">
+    <div className="min-h-screen bg-white dark:bg-gray-950 transition-colors duration-300">
+
       {/* Navigation */}
-      <nav className="fixed top-0 w-full bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg z-50 border-b border-gray-200 dark:border-gray-800 transition-colors duration-300">
+      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${scrollY > 20 ? 'bg-white/90 dark:bg-gray-950/90 backdrop-blur-xl shadow-sm border-b border-gray-100 dark:border-gray-800' : 'bg-transparent'}`}>
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 animate-slide-in-left">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg hover:scale-110 transition-transform duration-300">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-md">
               R
             </div>
-            <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Reachify
-            </span>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">Reachify</span>
           </div>
-          <div className="flex items-center gap-6 animate-slide-in-right">
-            <a href="#features" className="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200">
-              Features
-            </a>
-            <a href="#pricing" className="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200">
-              Pricing
-            </a>
-            <a href="#testimonials" className="text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200">
-              Testimonials
-            </a>
-            
-            {/* Dark Mode Toggle */}
+
+          <div className="hidden md:flex items-center gap-8">
+            {[['Features', '#features'], ['How It Works', '#how-it-works'], ['Pricing', '#pricing'], ['FAQ', '#faq']].map(([label, href]) => (
+              <a key={label} href={href} className="text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
+                {label}
+              </a>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all duration-300 hover:scale-110"
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               aria-label="Toggle dark mode"
             >
               {darkMode ? (
-                <svg className="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
                 </svg>
               ) : (
-                <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                 </svg>
               )}
             </button>
-
             <button
               onClick={() => navigate('/login')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg hover:shadow-lg hover:scale-105 transition-all duration-300"
+              className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition"
             >
-              Get Started
+              Sign In
+            </button>
+            <button
+              onClick={() => navigate('/login')}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm hover:shadow-md"
+            >
+              Get Started Free
             </button>
           </div>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-6 overflow-hidden">
-        <div className="max-w-7xl mx-auto text-center">
-          <div 
-            className={`inline-block mb-6 px-4 py-2 bg-blue-100 dark:bg-blue-900/30 rounded-full text-blue-600 dark:text-blue-400 text-sm font-medium animate-bounce-slow ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-            style={{ transform: `translateY(${scrollY * 0.1}px)` }}
-          >
-            ✨ Because Manually Sending 10,000 Emails is SO 2005
+      <section className="pt-28 pb-24 px-6 bg-gradient-to-b from-blue-50/60 via-white to-white dark:from-gray-900 dark:via-gray-950 dark:to-gray-950">
+        <div className="max-w-5xl mx-auto text-center">
+          <div className={`inline-flex items-center gap-2 mb-6 px-4 py-1.5 bg-blue-100 dark:bg-blue-900/40 rounded-full text-blue-700 dark:text-blue-300 text-sm font-medium transition-all duration-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+            Built for Indian businesses · Priced in ₹ · Free to start
           </div>
-          
-          <h1 
-            className={`text-6xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent leading-tight transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}
-            style={{ transform: `translateY(${scrollY * 0.05}px)` }}
-          >
-            Email Marketing
+
+          <h1 className={`text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 tracking-tight transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            <span className="text-gray-900 dark:text-white">Email outreach</span>
             <br />
-            <span className="text-5xl md:text-6xl">Without the Drama</span>
+            <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">at scale, finally.</span>
           </h1>
-          
-          <p 
-            className={`text-xl text-gray-600 dark:text-gray-300 mb-10 max-w-3xl mx-auto transition-all duration-1000 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}
-            style={{ transform: `translateY(${scrollY * 0.08}px)` }}
-          >
-            Stop clicking "send" like it's 1999. Schedule 10,000 emails while you sleep, 
-            track who actually reads them (spoiler: not many), and pretend you're a marketing genius.
-            <br />
-            <span className="text-sm mt-2 block opacity-75">
-              (But seriously, we handle 1M+ emails/day with 99.9% deliverability. We're good at this.)
-            </span>
+
+          <p className={`text-xl text-gray-600 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            Schedule thousands of personalised emails, track opens and clicks in real-time, and manage bounces automatically — all in one clean dashboard.
           </p>
 
-          <div className={`flex items-center justify-center gap-4 mb-16 transition-all duration-1000 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+          <div className={`flex flex-col sm:flex-row items-center justify-center gap-4 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <button
               onClick={() => navigate('/login')}
-              className="group bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl text-lg font-semibold hover:shadow-2xl hover:scale-105 transition-all duration-300 relative overflow-hidden"
+              className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-xl text-base font-semibold shadow-lg hover:shadow-xl transition-all"
             >
-              <span className="relative z-10">Start Free Trial</span>
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+              Start for Free — No Credit Card
             </button>
+            <a
+              href="#how-it-works"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 font-medium transition"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              See how it works
+            </a>
           </div>
 
-          {/* Animated Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-4xl mx-auto">
-            {stats.map((stat, i) => (
-              <div 
-                key={i}
-                className={`bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-2xl p-6 border border-gray-200 dark:border-gray-700 hover:scale-110 hover:shadow-xl transition-all duration-300 cursor-pointer animate-fade-in-up`}
-                style={{ animationDelay: `${i * 100}ms` }}
-              >
-                <div className="text-4xl mb-2">{stat.icon}</div>
-                <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                  {stat.value}
-                </div>
-                <div className="text-sm text-gray-600 dark:text-gray-400">{stat.label}</div>
+          {/* Stats strip */}
+          <div className={`mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 transition-all duration-700 delay-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+            {stats.map((s, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 p-5 shadow-sm">
+                <p className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{s.value}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{s.label}</p>
               </div>
             ))}
           </div>
@@ -198,37 +274,58 @@ function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="py-20 px-6 bg-white/50 dark:bg-gray-900/50 transition-colors duration-300">
+      <section id="features" className="py-24 px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16 animate-fade-in">
-            <h2 className="text-5xl font-bold mb-4 text-gray-900 dark:text-white">
-              Features That Actually Work
+          <div className="text-center mb-16">
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">Platform Features</p>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
+              Everything you need to reach your audience
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300">
-              Unlike your last marketing campaign, these features deliver results
-              <br />
-              <span className="text-sm opacity-75">(We have the analytics to prove it. You probably don't.)</span>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              From scheduling to analytics to bounce management — Reachify handles the full email lifecycle so you can focus on what you're writing, not how it's sent.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, i) => (
               <div
                 key={i}
-                className="group bg-white dark:bg-gray-800 rounded-2xl p-8 border border-gray-200 dark:border-gray-700 hover:border-transparent hover:shadow-2xl transition-all duration-500 hover:-translate-y-3 animate-fade-in-up relative overflow-hidden"
-                style={{ animationDelay: `${i * 100}ms` }}
+                className="group bg-white dark:bg-gray-900 rounded-2xl p-7 border border-gray-100 dark:border-gray-800 hover:border-blue-200 dark:hover:border-blue-800 hover:shadow-lg transition-all duration-300"
               >
-                <div className={`absolute inset-0 bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-10 transition-opacity duration-500`}></div>
-                <div className="relative z-10">
-                  <div className="text-5xl mb-4 group-hover:scale-125 group-hover:rotate-12 transition-all duration-500">
-                    {feature.icon}
-                  </div>
-                  <h3 className="text-2xl font-bold mb-3 text-gray-900 dark:text-white">
-                    {feature.title}
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-300">
-                    {feature.description}
-                  </p>
+                <div className={`w-12 h-12 rounded-xl ${feature.bg} ${feature.text} flex items-center justify-center mb-5`}>
+                  {feature.icon}
+                </div>
+                <h3 className="text-lg font-bold mb-2 text-gray-900 dark:text-white">{feature.title}</h3>
+                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section id="how-it-works" className="py-24 px-6 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">How It Works</p>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
+              Up and running in under 5 minutes
+            </h2>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
+              No complex setup, no developer required. Sign in with Google and schedule your first campaign in minutes.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {steps.map((step, i) => (
+              <div key={i} className="relative">
+                {i < steps.length - 1 && (
+                  <div className="hidden md:block absolute top-8 left-full w-full h-px bg-gradient-to-r from-blue-200 to-transparent dark:from-blue-800 -translate-x-4" />
+                )}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-7 border border-gray-100 dark:border-gray-700 h-full">
+                  <span className="text-4xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{step.num}</span>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 mb-2">{step.title}</h3>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{step.desc}</p>
                 </div>
               </div>
             ))}
@@ -236,93 +333,119 @@ function Home() {
         </div>
       </section>
 
-      {/* Pricing Section - INR */}
-      <section id="pricing" className="py-20 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16 animate-fade-in">
-            <h2 className="text-5xl font-bold mb-4 text-gray-900 dark:text-white">
-              Pricing That Won't Make Your CFO Cry
+      {/* Pricing Section */}
+      <section id="pricing" className="py-24 px-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">Pricing</p>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
+              Simple, honest pricing in ₹
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300">
-              Unlike Mailchimp's $299/month, we charge in rupees. Revolutionary, we know.
-              <br />
-              <span className="text-sm opacity-75">(Seriously though, we're 70% cheaper. Do the math.)</span>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
+              No per-email charges, no hidden fees. Pay a flat monthly rate and send as much as your plan allows. GST applicable.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-8 items-start">
             {[
               {
                 name: 'Starter',
                 price: '₹0',
-                period: 'Forever Free',
-                features: ['1,000 emails/month', 'Basic analytics (see who ignores you)', 'Email support (we reply faster than your customers)', '1 user', 'CSV upload (because Excel is life)'],
-                cta: 'Start Free',
-                plan: 'starter'
+                period: 'Free forever',
+                desc: 'Perfect for individuals and small teams getting started with email outreach.',
+                features: [
+                  '1,000 emails / month',
+                  'Basic analytics dashboard',
+                  'CSV upload & personalisation',
+                  'Bounce & unsubscribe tracking',
+                  '1 SMTP account',
+                  'Email support',
+                ],
+                cta: 'Get Started Free',
+                plan: 'starter',
+                popular: false,
               },
               {
                 name: 'Professional',
                 price: '₹3,999',
-                period: '/month',
-                features: ['50,000 emails/month (that\'s a lot of spam)', 'Advanced analytics (know exactly who hates you)', 'Priority support (we\'ll reply in 5 min)', '5 users (share the pain)', 'Custom templates (look professional)', 'API access (for the nerds)', 'Webhooks (because automation)'],
-                popular: true,
+                period: '/ month',
+                desc: 'For growing businesses running regular outbound campaigns at scale.',
+                features: [
+                  '50,000 emails / month',
+                  'Advanced analytics & exports',
+                  'Follow-up sequences',
+                  'Multi-SMTP rotation',
+                  'Spam score checker',
+                  '5 users',
+                  'Priority support (< 4 hr response)',
+                  'API access',
+                ],
                 cta: 'Start 14-day Trial',
-                plan: 'professional'
+                plan: 'professional',
+                popular: true,
               },
               {
                 name: 'Enterprise',
                 price: '₹14,999',
-                period: '/month',
-                features: ['Unlimited emails (go crazy)', 'Real-time analytics (watch the magic happen)', '24/7 support (we never sleep)', 'Unlimited users (bring the whole company)', 'Custom integrations (we\'ll integrate with your toaster)', 'Dedicated manager (your new best friend)', 'SLA guarantee (99.9% uptime or your money back)', 'White-label (pretend you built this)'],
-                cta: 'Get Started',
-                plan: 'enterprise'
-              }
+                period: '/ month',
+                desc: 'For high-volume teams that need unlimited sending and dedicated support.',
+                features: [
+                  'Unlimited emails',
+                  'All Professional features',
+                  'Unlimited users',
+                  'Dedicated account manager',
+                  'Custom integrations & webhooks',
+                  'White-label option',
+                  '24/7 priority support',
+                  'SLA: 99.9% uptime guarantee',
+                ],
+                cta: 'Contact Sales',
+                plan: 'enterprise',
+                popular: false,
+              },
             ].map((plan, i) => (
               <div
                 key={i}
-                className={`relative bg-white dark:bg-gray-800 rounded-3xl p-8 border-2 transition-all duration-500 hover:scale-105 animate-fade-in-up ${
-                  plan.popular 
-                    ? 'border-blue-500 dark:border-blue-400 shadow-2xl scale-105 ring-4 ring-blue-500/20' 
-                    : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600'
+                className={`relative bg-white dark:bg-gray-900 rounded-2xl p-8 border-2 transition-all duration-300 ${
+                  plan.popular
+                    ? 'border-blue-500 shadow-2xl shadow-blue-100 dark:shadow-blue-900/20 scale-105'
+                    : 'border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700'
                 }`}
-                style={{ animationDelay: `${i * 150}ms` }}
               >
                 {plan.popular && (
-                  <div className="absolute -top-5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-full text-sm font-semibold shadow-lg animate-pulse">
-                    ⭐ Most Popular
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-xs font-bold px-5 py-1.5 rounded-full uppercase tracking-wider">
+                    Most Popular
                   </div>
                 )}
-                <div className="text-center mb-6">
-                  <h3 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">{plan.name}</h3>
-                  <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                      {plan.price}
-                    </span>
-                    <span className="text-gray-500 dark:text-gray-400">{plan.period}</span>
+                <div className="mb-6">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-1">{plan.name}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{plan.desc}</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-extrabold text-gray-900 dark:text-white">{plan.price}</span>
+                    <span className="text-gray-500 dark:text-gray-400 text-sm">{plan.period}</span>
                   </div>
                 </div>
-                <ul className="space-y-4 mb-8">
-                  {plan.features.map((feature, j) => (
-                    <li key={j} className="flex items-start gap-3 text-gray-600 dark:text-gray-300">
-                      <svg className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+
+                <ul className="space-y-3 mb-8">
+                  {plan.features.map((f, j) => (
+                    <li key={j} className="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                      <svg className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                       </svg>
-                      <span>{feature}</span>
+                      {f}
                     </li>
                   ))}
                 </ul>
+
                 <button
                   onClick={() => {
-                    if (plan.plan === 'starter') {
-                      navigate('/login');
-                    } else if (plan.plan === 'professional' || plan.plan === 'enterprise') {
-                      setSelectedPlan(plan.plan);
-                    }
+                    if (plan.plan === 'starter') navigate('/login');
+                    else if (plan.plan === 'professional' || plan.plan === 'enterprise') setSelectedPlan(plan.plan as any);
                   }}
-                  className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 hover:scale-105 ${
+                  className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-all duration-200 ${
                     plan.popular
-                      ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-2xl'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
                   {plan.cta}
@@ -331,48 +454,41 @@ function Home() {
             ))}
           </div>
 
-          <p className="mt-4 text-sm opacity-75">💳 All prices in Indian Rupees (₹). GST applicable as per Indian tax laws.
-            <br />
-            <span className="text-xs">P.S. - Yes, we're cheaper than Mailchimp. No, we're not cutting corners. We just don't have a fancy office in San Francisco.</span>
+          <p className="text-center mt-8 text-sm text-gray-500 dark:text-gray-400">
+            All plans billed monthly. Cancel anytime. GST applicable as per Indian tax laws.
           </p>
         </div>
       </section>
 
-      {/* Testimonials Section */}
-      <section id="testimonials" className="py-20 px-6 bg-white/50 dark:bg-gray-900/50">
-        <div className="max-w-7xl mx-auto">
+      {/* Testimonials */}
+      <section id="testimonials" className="py-24 px-6 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-5xl font-bold mb-4 text-gray-900 dark:text-white">
-              Real Reviews from Real People
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">Customer Stories</p>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
+              Teams that switched to Reachify
             </h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300">
-              (Who are definitely not our friends. Probably.)
-              <br />
-              <span className="text-sm opacity-75">Okay fine, Priya is my cousin. But the other two are legit!</span>
-            </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            {testimonials.map((testimonial, i) => (
-              <div
-                key={i}
-                className="bg-white dark:bg-gray-800 rounded-2xl p-8 border border-gray-200 dark:border-gray-700 hover:shadow-2xl transition-all duration-300 hover:-translate-y-2 animate-fade-in-up"
-                style={{ animationDelay: `${i * 100}ms` }}
-              >
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="text-4xl">{testimonial.avatar}</div>
-                  <div>
-                    <h4 className="font-bold text-gray-900 dark:text-white">{testimonial.name}</h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{testimonial.role}</p>
-                  </div>
-                </div>
-                <p className="text-gray-600 dark:text-gray-300 italic">"{testimonial.content}"</p>
-                <div className="flex gap-1 mt-4">
-                  {[...Array(5)].map((_, i) => (
-                    <svg key={i} className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+          <div className="grid md:grid-cols-3 gap-6">
+            {testimonials.map((t, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-7 border border-gray-100 dark:border-gray-700 flex flex-col gap-4">
+                <div className="flex gap-1">
+                  {[...Array(5)].map((_, j) => (
+                    <svg key={j} className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
                     </svg>
                   ))}
+                </div>
+                <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed flex-1">"{t.content}"</p>
+                <div className="flex items-center gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${t.color} flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}>
+                    {t.initials}
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-gray-900 dark:text-white">{t.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{t.role}</p>
+                  </div>
                 </div>
               </div>
             ))}
@@ -380,77 +496,107 @@ function Home() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="py-20 px-6">
-        <div className="max-w-4xl mx-auto text-center bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl p-12 text-white shadow-2xl hover:scale-105 transition-transform duration-500 animate-fade-in">
-          <h2 className="text-4xl font-bold mb-4">
-            Still Reading? You Must Be Interested.
-          </h2>
-          <p className="text-xl mb-8 opacity-90">
-            Join 50,000+ marketers who stopped manually sending emails and started living their best life.
-            <br />
-            <span className="text-sm">(Okay, it's more like 500 users. But we're growing! Give us a break.)</span>
+      {/* FAQ */}
+      <section id="faq" className="py-24 px-6">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">FAQ</p>
+            <h2 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">Common questions</h2>
+          </div>
+
+          <div className="space-y-3">
+            {faqs.map((faq, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-6 py-5 text-left"
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                >
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm pr-4">{faq.q}</span>
+                  <svg
+                    className={`w-5 h-5 text-gray-400 flex-shrink-0 transition-transform ${openFaq === i ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {openFaq === i && (
+                  <div className="px-6 pb-5 text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-t border-gray-100 dark:border-gray-800 pt-4">
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Banner */}
+      <section className="py-20 px-6 bg-gradient-to-r from-blue-600 to-purple-600">
+        <div className="max-w-3xl mx-auto text-center text-white">
+          <h2 className="text-4xl font-bold mb-4">Ready to scale your outreach?</h2>
+          <p className="text-blue-100 mb-8 text-lg">
+            Join hundreds of Indian businesses already using Reachify to send smarter, faster email campaigns.
           </p>
           <button
             onClick={() => navigate('/login')}
-            className="bg-white text-blue-600 px-8 py-4 rounded-xl text-lg font-semibold hover:shadow-2xl hover:scale-110 transition-all duration-300"
+            className="bg-white text-blue-600 px-8 py-4 rounded-xl font-bold text-base hover:shadow-2xl hover:scale-105 transition-all duration-300"
           >
-            Fine, I'll Try It For Free →
+            Get Started Free — No Credit Card
           </button>
-          <p className="mt-4 text-sm opacity-75">No credit card required • 14-day free trial • Cancel anytime (but you won't want to)</p>
+          <p className="mt-4 text-sm text-blue-200">1,000 free emails/month · No commitment · Cancel anytime</p>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="py-12 px-6 bg-gray-900 text-white">
+      <footer className="bg-gray-950 text-white py-14 px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
+          <div className="grid md:grid-cols-4 gap-10 mb-10">
+            <div className="md:col-span-1">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center font-bold">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center font-bold text-sm">
                   R
                 </div>
-                <span className="text-xl font-bold">Reachify</span>
+                <span className="text-lg font-bold">Reachify</span>
               </div>
-              <p className="text-gray-400 text-sm">
-                Email marketing that doesn't suck.
-                <br />
-                <span className="text-xs opacity-75">(Most of the time.)</span>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Professional email outreach platform built for Indian businesses. Schedule, personalise, and track at scale.
               </p>
             </div>
+
             <div>
-              <h4 className="font-bold mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
+              <h4 className="font-semibold text-sm mb-4 text-gray-300 uppercase tracking-wider">Product</h4>
+              <ul className="space-y-3 text-sm text-gray-400">
                 <li><a href="#features" className="hover:text-white transition">Features</a></li>
                 <li><a href="#pricing" className="hover:text-white transition">Pricing</a></li>
-                <li><a href="#" className="hover:text-white transition">API Docs</a></li>
-                <li><a href="#" className="hover:text-white transition">Integrations</a></li>
+                <li><a href="#how-it-works" className="hover:text-white transition">How It Works</a></li>
+                <li><a href="#faq" className="hover:text-white transition">FAQ</a></li>
               </ul>
             </div>
+
             <div>
-              <h4 className="font-bold mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition">About Us</a></li>
-                <li><a href="#" className="hover:text-white transition">Careers</a></li>
-                <li><a href="#" className="hover:text-white transition">Blog</a></li>
-                <li><a href="#" className="hover:text-white transition">Contact</a></li>
+              <h4 className="font-semibold text-sm mb-4 text-gray-300 uppercase tracking-wider">Use Cases</h4>
+              <ul className="space-y-3 text-sm text-gray-400">
+                <li><span className="hover:text-white transition cursor-default">Job Applications</span></li>
+                <li><span className="hover:text-white transition cursor-default">Sales Outreach</span></li>
+                <li><span className="hover:text-white transition cursor-default">Investor Outreach</span></li>
+                <li><span className="hover:text-white transition cursor-default">Newsletter Campaigns</span></li>
               </ul>
             </div>
+
             <div>
-              <h4 className="font-bold mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm text-gray-400">
+              <h4 className="font-semibold text-sm mb-4 text-gray-300 uppercase tracking-wider">Legal</h4>
+              <ul className="space-y-3 text-sm text-gray-400">
                 <li><a href="#" className="hover:text-white transition">Privacy Policy</a></li>
                 <li><a href="#" className="hover:text-white transition">Terms of Service</a></li>
                 <li><a href="#" className="hover:text-white transition">Cookie Policy</a></li>
-                <li><a href="#" className="hover:text-white transition">GDPR</a></li>
+                <li><a href="#" className="hover:text-white transition">GDPR Compliance</a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-gray-800 pt-8 text-center text-sm text-gray-400">
-            <p>© 2026 Reachify. All rights reserved. Made with ❤️ (and lots of coffee ☕) in India</p>
-            <p className="text-xs mt-2 opacity-75">
-              No emails were harmed in the making of this platform. Okay, maybe a few bounced. But we fixed it!
-            </p>
+
+          <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+            <p>© 2026 Reachify. All rights reserved. Made with care in India 🇮🇳</p>
+            <p>Payments secured by Razorpay · GST applicable</p>
           </div>
         </div>
       </footer>
@@ -474,63 +620,6 @@ function Home() {
           onClose={() => setNotification(null)}
         />
       )}
-
-      <style>{`
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes fade-in-up {
-          from { 
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to { 
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        @keyframes slide-in-left {
-          from {
-            opacity: 0;
-            transform: translateX(-50px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        @keyframes slide-in-right {
-          from {
-            opacity: 0;
-            transform: translateX(50px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
-        }
-        @keyframes bounce-slow {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-10px); }
-        }
-        .animate-fade-in {
-          animation: fade-in 1s ease-out;
-        }
-        .animate-fade-in-up {
-          animation: fade-in-up 0.8s ease-out forwards;
-          opacity: 0;
-        }
-        .animate-slide-in-left {
-          animation: slide-in-left 0.6s ease-out;
-        }
-        .animate-slide-in-right {
-          animation: slide-in-right 0.6s ease-out;
-        }
-        .animate-bounce-slow {
-          animation: bounce-slow 3s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   );
 }

@@ -66,6 +66,13 @@ class MemoryStore {
     return parseInt(newValue);
   }
 
+  async decr(key: string): Promise<number> {
+    const current = await this.get(key);
+    const newValue = Math.max(0, parseInt(current || '0') - 1).toString();
+    await this.set(key, newValue);
+    return parseInt(newValue);
+  }
+
   async expire(key: string, seconds: number): Promise<number> {
     const data = this.store.get(key);
     if (!data) return 0;
@@ -219,6 +226,13 @@ class RedisWithFallback {
     return this.executeWithFallback(
       () => this.redis!.incr(key),
       () => this.fallback.incr(key)
+    );
+  }
+
+  async decr(key: string): Promise<number> {
+    return this.executeWithFallback(
+      () => this.redis!.decr(key),
+      () => this.fallback.decr(key)
     );
   }
 

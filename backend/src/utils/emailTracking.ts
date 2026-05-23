@@ -3,7 +3,7 @@
  * Adds open tracking pixels and click tracking to emails
  */
 
-const BACKEND_URL = process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || 'https://reachify-backend-jep1.onrender.com';
+const BACKEND_URL = process.env.BACKEND_URL || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3001';
 
 /**
  * Add tracking pixel to email body for open tracking

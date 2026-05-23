@@ -17,6 +17,10 @@ import authRoutes from './routes/auth';
 import emailRoutes from './routes/emails';
 import paymentRoutes from './routes/payment';
 import trackingRoutes from './routes/tracking';
+import campaignRoutes from './routes/campaigns';
+import smtpRoutes from './routes/smtp';
+import sequenceRoutes from './routes/sequences';
+import contactRoutes from './routes/contacts';
 import { emailQueue, emailWorker } from './queue/emailQueue';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
@@ -79,12 +83,10 @@ app.use(helmet({
 
 app.use(compression());
 
-// CORS configuration with multiple origins support
+// CORS — built entirely from env vars, no hardcoded URLs
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'https://reachify-io.onrender.com'
+  ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()) : []),
 ].filter(Boolean);
 
 app.use(cors({
@@ -165,8 +167,12 @@ app.use('/api', userLimiter);
 // Routes
 app.use('/auth', authRoutes);
 app.use('/api/emails', emailRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/smtp', smtpRoutes);
+app.use('/api/sequences', sequenceRoutes);
+app.use('/api/contacts', contactRoutes);
 app.use('/api/payment', paymentRoutes);
-app.use('/track', trackingRoutes); // Email tracking (open/click/unsubscribe)
+app.use('/track', trackingRoutes);
 
 // Cache middleware for GET requests
 const cacheMiddleware = (duration: number) => {
@@ -260,8 +266,12 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-// Metrics endpoint for monitoring
+// Metrics endpoint for monitoring (protected by optional secret header)
 app.get('/metrics', async (_req, res) => {
+  const secret = process.env.METRICS_SECRET;
+  if (secret && _req.headers['x-metrics-secret'] !== secret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   try {
     const queueCounts = await emailQueue.getJobCounts();
     const memUsage = process.memoryUsage();
@@ -324,9 +334,10 @@ io.on('connection', (socket) => {
 
 // Emit email status updates via WebSocket
 emailWorker.on('completed', async (job) => {
-  const userId = job.data.userId;
-  io.to(userId).emit('emailUpdate', {
-    emailId: job.data.emailId,
+  const data = job.data as any;
+  if (!data.emailId) return; // sequence-followup jobs don't have emailId here
+  io.to(data.userId).emit('emailUpdate', {
+    emailId: data.emailId,
     status: 'sent',
     timestamp: new Date().toISOString()
   });
@@ -334,9 +345,10 @@ emailWorker.on('completed', async (job) => {
 
 emailWorker.on('failed', async (job) => {
   if (job) {
-    const userId = job.data.userId;
-    io.to(userId).emit('emailUpdate', {
-      emailId: job.data.emailId,
+    const data = job.data as any;
+    if (!data.emailId) return;
+    io.to(data.userId).emit('emailUpdate', {
+      emailId: data.emailId,
       status: 'failed',
       timestamp: new Date().toISOString()
     });
@@ -365,11 +377,19 @@ async function reEnqueuePendingEmails() {
 
     let requeued = 0;
     const limit = parseInt(process.env.MAX_EMAILS_PER_HOUR || '200');
+    // Stagger overdue emails at 500 ms each (max 30 s lead-in) to avoid bursting the SMTP provider
+    const OVERDUE_STAGGER_MS = 500;
+    let overdueIndex = 0;
 
     for (const row of rows) {
-      // If scheduled time is in the past, send immediately (delay = 0)
-      const delay = Math.max(0, new Date(row.scheduled_at).getTime() - Date.now());
-      
+      const naturalDelay = new Date(row.scheduled_at).getTime() - Date.now();
+      // For past-due emails, spread them out; future emails keep their natural delay
+      const delay = naturalDelay > 0
+        ? naturalDelay
+        : Math.min(overdueIndex * OVERDUE_STAGGER_MS, 30_000);
+
+      if (naturalDelay <= 0) overdueIndex++;
+
       try {
         const existingJob = await emailQueue.getJob(row.id);
         if (!existingJob) {

@@ -207,7 +207,7 @@ router.get('/unsubscribe/:emailId', async (req: Request, res: Response) => {
           <p>We're sorry to see you go! You will no longer receive emails from us at:</p>
           <div class="email">${recipient_email}</div>
           <p>If this was a mistake, you can resubscribe anytime by contacting us.</p>
-          <a href="https://reachify-io.onrender.com" class="button">Visit Reachify</a>
+          <a href="${process.env.FRONTEND_URL || ''}" class="button">Visit Reachify</a>
         </div>
       </body>
       </html>

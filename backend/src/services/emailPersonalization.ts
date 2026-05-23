@@ -2,77 +2,117 @@ export interface EmailData {
   [key: string]: string;
 }
 
-export function parseCSVWithHeaders(content: string): { emails: string[]; data: EmailData[] } {
-  const lines = content.split('\n').filter(line => line.trim());
-  
-  if (lines.length === 0) {
-    return { emails: [], data: [] };
-  }
-
-  // Try to extract all emails using regex first (fallback)
-  const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
-  const allEmailsInContent = content.match(EMAIL_REGEX) || [];
-  
-  // Parse headers
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const emailIndex = headers.findIndex(h => h === 'email' || h === 'e-mail' || h === 'mail' || h.includes('email'));
-
-  if (emailIndex === -1) {
-    // No headers, treat as plain email list or use regex extracted emails
-    const emails = allEmailsInContent.length > 0 ? allEmailsInContent : lines.filter(line => isValidEmail(line.trim()));
-    return {
-      emails: [...new Set(emails.map(e => e.toLowerCase()))],
-      data: emails.map(email => ({ email: email.toLowerCase() }))
-    };
-  }
-
-  // Parse data rows
-  const data: EmailData[] = [];
-  const emails: string[] = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const values = lines[i].split(',').map(v => v.trim());
-    const email = values[emailIndex]?.toLowerCase().trim();
-
-    if (email && isValidEmail(email)) {
-      const row: EmailData = {};
-      headers.forEach((header, idx) => {
-        row[header] = values[idx]?.trim() || '';
-      });
-      data.push(row);
-      emails.push(email);
-    }
-  }
-
-  // If no emails found with headers, use regex fallback
-  if (emails.length === 0 && allEmailsInContent.length > 0) {
-    return {
-      emails: [...new Set(allEmailsInContent.map(e => e.toLowerCase()))],
-      data: allEmailsInContent.map(email => ({ email: email.toLowerCase() }))
-    };
-  }
-
-  return {
-    emails: [...new Set(emails)],
-    data
-  };
+export interface ParseResult {
+  emails: string[];
+  data: EmailData[];
+  skipped: number;
+  invalidEmails: string[];
 }
 
-export function personalizeEmail(template: string, data: EmailData): string {
-  let result = template;
-  
-  // Replace all placeholders found in template
-  const placeholderRegex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
-  result = result.replace(placeholderRegex, (match, key) => {
-    // Case-insensitive lookup
-    const dataKey = Object.keys(data).find(k => k.toLowerCase() === key.toLowerCase());
-    return dataKey ? data[dataKey] : '';
-  });
+// Handles quoted fields: `"Smith, Jr",john@x.com` → ["Smith, Jr", "john@x.com"]
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
 
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
   return result;
 }
 
 function isValidEmail(email: string): boolean {
-  const emailRegex = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
-  return emailRegex.test(email);
+  return /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email);
+}
+
+export function parseCSVWithHeaders(content: string): ParseResult {
+  const lines = content.split('\n').filter(line => line.trim());
+
+  if (lines.length === 0) {
+    return { emails: [], data: [], skipped: 0, invalidEmails: [] };
+  }
+
+  const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+  const allEmailsInContent = content.match(EMAIL_REGEX) || [];
+
+  const headers = parseCSVLine(lines[0]).map(h => h.toLowerCase());
+  const emailIndex = headers.findIndex(
+    h => h === 'email' || h === 'e-mail' || h === 'mail' || h.includes('email')
+  );
+
+  const emails: string[] = [];
+  const data: EmailData[] = [];
+  const seen = new Set<string>();
+  const invalidEmails: string[] = [];
+  let skipped = 0;
+
+  if (emailIndex === -1) {
+    // No header row — treat every line (or regex match) as a plain email
+    const rawList =
+      allEmailsInContent.length > 0
+        ? allEmailsInContent
+        : lines.filter(l => isValidEmail(l.trim()));
+
+    for (const raw of rawList) {
+      const email = raw.toLowerCase().trim();
+      if (!isValidEmail(email)) { invalidEmails.push(raw); continue; }
+      if (seen.has(email))      { skipped++;               continue; }
+      seen.add(email);
+      emails.push(email);
+      data.push({ email });
+    }
+    return { emails, data, skipped, invalidEmails };
+  }
+
+  // Header row present — parse data rows
+  for (let i = 1; i < lines.length; i++) {
+    const values = parseCSVLine(lines[i]);
+    const email = values[emailIndex]?.toLowerCase().trim();
+
+    if (!email)              { continue; }
+    if (!isValidEmail(email)){ invalidEmails.push(email); continue; }
+    if (seen.has(email))     { skipped++;                 continue; }
+
+    seen.add(email);
+    const row: EmailData = {};
+    headers.forEach((header, idx) => {
+      row[header] = values[idx]?.trim() ?? '';
+    });
+    data.push(row);
+    emails.push(email);
+  }
+
+  // Fallback: if header parsing found nothing, use regex
+  if (emails.length === 0 && allEmailsInContent.length > 0) {
+    for (const raw of allEmailsInContent) {
+      const email = raw.toLowerCase();
+      if (seen.has(email)) { skipped++; continue; }
+      seen.add(email);
+      emails.push(email);
+      data.push({ email });
+    }
+  }
+
+  return { emails, data, skipped, invalidEmails };
+}
+
+export function personalizeEmail(template: string, data: EmailData): string {
+  return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_match, key) => {
+    const found = Object.keys(data).find(k => k.toLowerCase() === key.toLowerCase());
+    return found ? data[found] : '';
+  });
 }

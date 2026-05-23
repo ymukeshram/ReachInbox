@@ -40,16 +40,18 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-blue-900">
-        <div className="flex flex-col items-center gap-4 text-center px-4 max-w-md">
-          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-700 dark:text-gray-300 font-medium text-xl">Waking up backend...</p>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">
-            Free tier servers sleep after inactivity. First load may take up to 60 seconds.
-          </p>
-          <p className="text-blue-600 dark:text-blue-400 text-xs mt-2">
-            💡 Tip: If this takes too long, try refreshing the page
-          </p>
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-gray-950">
+        <div className="flex flex-col items-center gap-5 text-center px-6 max-w-sm">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center text-white font-bold text-2xl shadow-lg">
+            R
+          </div>
+          <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <div>
+            <p className="text-gray-800 dark:text-gray-200 font-semibold text-lg">Starting up Reachify</p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
+              Free tier servers wake up on first request — this takes up to 60 seconds.
+            </p>
+          </div>
         </div>
       </div>
     );

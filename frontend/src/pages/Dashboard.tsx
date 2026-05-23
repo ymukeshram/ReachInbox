@@ -5,8 +5,11 @@ import EmailPreviewModal from '../components/EmailPreviewModal';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
 import TemplatesModal from '../components/TemplatesModal';
 import { ErrorBoundary } from '../utils/errorBoundary';
-import { getScheduledEmails, getSentEmails, bulkCancelEmails, getUser } from '../api';
-import { User, ScheduledEmail, SentEmail } from '../types';
+import {
+  getScheduledEmails, getSentEmails, bulkCancelEmails, getUser, getExportUrl,
+  getCampaigns, cancelCampaign,
+} from '../api';
+import { User, ScheduledEmail, SentEmail, Campaign } from '../types';
 import { useWebSocket } from '../hooks/useWebSocket';
 import axios from 'axios';
 
@@ -15,50 +18,40 @@ interface DashboardProps {
   setUser: (user: User | null) => void;
 }
 
-function Dashboard({ user, setUser }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState<'scheduled' | 'sent' | 'analytics'>('scheduled');
-  const [showCompose, setShowCompose] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [previewEmail, setPreviewEmail] = useState<ScheduledEmail | SentEmail | null>(null);
-  const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmail[]>([]);
-  const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
-  const [bulkActionLoading, setBulkActionLoading] = useState(false);
-  const [subscription, setSubscription] = useState<any>(null);
-  const [permissions, setPermissions] = useState<any>(null);
+type Tab = 'scheduled' | 'sent' | 'campaigns' | 'analytics';
 
-  // Keep session alive with user activity
+function Dashboard({ user, setUser }: DashboardProps) {
+  const [activeTab, setActiveTab]             = useState<Tab>('scheduled');
+  const [showCompose, setShowCompose]         = useState(false);
+  const [showTemplates, setShowTemplates]     = useState(false);
+  const [previewEmail, setPreviewEmail]       = useState<ScheduledEmail | SentEmail | null>(null);
+  const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmail[]>([]);
+  const [sentEmails, setSentEmails]           = useState<SentEmail[]>([]);
+  const [campaigns, setCampaigns]             = useState<Campaign[]>([]);
+  const [loading, setLoading]                 = useState(false);
+  const [error, setError]                     = useState('');
+  const [searchQuery, setSearchQuery]         = useState('');
+  const [selectedEmails, setSelectedEmails]   = useState<Set<string>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
+  const [subscription, setSubscription]       = useState<any>(null);
+  const [permissions, setPermissions]         = useState<any>(null);
+
+  // Pagination state
+  const [scheduledPage, setScheduledPage]   = useState(1);
+  const [sentPage, setSentPage]             = useState(1);
+  const [scheduledTotal, setScheduledTotal] = useState(0);
+  const [sentTotal, setSentTotal]           = useState(0);
+  const [scheduledHasMore, setScheduledHasMore] = useState(false);
+  const [sentHasMore, setSentHasMore]       = useState(false);
+  const PAGE_SIZE = 50;
+
+  // Keep session alive
   useEffect(() => {
     const keepAlive = () => {
-      getUser().catch(() => {
-        // Session expired
-        setUser(null);
-        window.location.href = '/';
-      });
+      getUser().catch(() => { setUser(null); window.location.href = '/'; });
     };
-
-    // Refresh session every 5 minutes
     const interval = setInterval(keepAlive, 5 * 60 * 1000);
-
-    // Also refresh on user activity (clicks, typing)
-    let activityTimeout: number;
-    const handleActivity = () => {
-      clearTimeout(activityTimeout);
-      activityTimeout = window.setTimeout(keepAlive, 30000); // 30 seconds after activity
-    };
-
-    window.addEventListener('click', handleActivity);
-    window.addEventListener('keydown', handleActivity);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(activityTimeout);
-      window.removeEventListener('click', handleActivity);
-      window.removeEventListener('keydown', handleActivity);
-    };
+    return () => clearInterval(interval);
   }, [setUser]);
 
   const loadEmails = useCallback(async (showSpinner = true) => {
@@ -66,231 +59,199 @@ function Dashboard({ user, setUser }: DashboardProps) {
     setError('');
     try {
       if (activeTab === 'scheduled') {
-        const res = await getScheduledEmails();
-        setScheduledEmails(res.data);
+        const res = await getScheduledEmails(scheduledPage, PAGE_SIZE);
+        setScheduledEmails(res.data.data ?? res.data);
+        setScheduledTotal(res.data.total ?? 0);
+        setScheduledHasMore(res.data.hasMore ?? false);
       } else if (activeTab === 'sent') {
-        const res = await getSentEmails();
-        setSentEmails(res.data);
+        const res = await getSentEmails(sentPage, PAGE_SIZE, searchQuery);
+        setSentEmails(res.data.data ?? res.data);
+        setSentTotal(res.data.total ?? 0);
+        setSentHasMore(res.data.hasMore ?? false);
+      } else if (activeTab === 'campaigns') {
+        const res = await getCampaigns();
+        setCampaigns(res.data.campaigns ?? res.data ?? []);
       }
     } catch (err: any) {
-      // Check if session expired
       if (err.response?.status === 401) {
-        setError('Session expired. Redirecting to login...');
-        setTimeout(() => {
-          setUser(null);
-          window.location.href = '/';
-        }, 2000);
+        setError('Session expired. Redirecting...');
+        setTimeout(() => { setUser(null); window.location.href = '/'; }, 2000);
       } else {
-        setError('Failed to load emails. Please refresh the page.');
+        setError('Failed to load data. Please refresh.');
       }
     } finally {
       setLoading(false);
     }
-  }, [activeTab, setUser]);
+  }, [activeTab, scheduledPage, sentPage, searchQuery, setUser]);
 
-  // WebSocket for real-time updates
   const handleEmailUpdate = useCallback((data: { emailId: string; status: string }) => {
-    if (data.status === 'sent' || data.status === 'failed') {
-      // Refresh both lists
-      loadEmails(false);
-    }
+    if (data.status === 'sent' || data.status === 'failed') loadEmails(false);
   }, [loadEmails]);
 
   useWebSocket(user.id, handleEmailUpdate);
 
   useEffect(() => {
-    if (activeTab !== 'analytics') {
-      loadEmails(true);
+    if (activeTab !== 'analytics') loadEmails(true);
+  }, [activeTab, scheduledPage, sentPage, loadEmails]);
+
+  useEffect(() => {
+    if (activeTab === 'sent') {
+      const t = setTimeout(() => loadEmails(false), 400);
+      return () => clearTimeout(t);
     }
-  }, [activeTab, loadEmails]);
+  }, [searchQuery]);
 
-  // Load subscription info
   useEffect(() => {
-    const loadSubscription = async () => {
+    const load = async () => {
       try {
         const API_URL = import.meta.env.VITE_API_URL || '';
-        const res = await axios.get(`${API_URL}/api/payment/subscription`, { withCredentials: true });
-        setSubscription(res.data);
-      } catch (err) {
-        console.error('Failed to load subscription:', err);
-      }
+        const [subRes, permRes] = await Promise.allSettled([
+          axios.get(`${API_URL}/api/payment/subscription`, { withCredentials: true }),
+          axios.get(`${API_URL}/api/emails/permissions`, { withCredentials: true }),
+        ]);
+        if (subRes.status === 'fulfilled') setSubscription(subRes.value.data);
+        if (permRes.status === 'fulfilled') setPermissions(permRes.value.data);
+      } catch {}
     };
-    loadSubscription();
+    load();
   }, []);
 
-  // Load permissions and usage
-  useEffect(() => {
-    const loadPermissions = async () => {
-      try {
-        const API_URL = import.meta.env.VITE_API_URL || '';
-        const res = await axios.get(`${API_URL}/api/emails/permissions`, { withCredentials: true });
-        setPermissions(res.data);
-      } catch (err) {
-        console.error('Failed to load permissions:', err);
-      }
-    };
-    loadPermissions();
-  }, []);
-
-  const filteredScheduledEmails = scheduledEmails.filter(email =>
-    email.recipient_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    email.subject.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredSentEmails = sentEmails.filter(email =>
-    email.recipient_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    email.subject.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredScheduledEmails = scheduledEmails.filter(e =>
+    !searchQuery ||
+    e.recipient_email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    e.subject.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const toggleEmailSelection = (id: string) => {
     setSelectedEmails(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(id)) {
-        newSet.delete(id);
-      } else {
-        newSet.add(id);
-      }
-      return newSet;
+      const s = new Set(prev);
+      s.has(id) ? s.delete(id) : s.add(id);
+      return s;
     });
   };
 
   const toggleSelectAll = () => {
-    if (selectedEmails.size === filteredScheduledEmails.length) {
-      setSelectedEmails(new Set());
-    } else {
-      setSelectedEmails(new Set(filteredScheduledEmails.map(e => e.id)));
-    }
+    setSelectedEmails(
+      selectedEmails.size === filteredScheduledEmails.length && filteredScheduledEmails.length > 0
+        ? new Set()
+        : new Set(filteredScheduledEmails.map(e => e.id))
+    );
   };
 
   const handleBulkCancel = async () => {
     if (selectedEmails.size === 0) return;
-    if (!confirm(`Cancel ${selectedEmails.size} selected emails?`)) return;
-
+    if (!confirm(`Cancel ${selectedEmails.size} selected email(s)?`)) return;
     setBulkActionLoading(true);
-    setError(''); // Clear previous errors
+    setError('');
     try {
-      const emailIds = Array.from(selectedEmails);
-      console.log('Cancelling emails:', emailIds);
-      console.log('Selected emails details:', 
-        scheduledEmails.filter(e => emailIds.includes(e.id)).map(e => ({ 
-          id: e.id, 
-          status: e.status, 
-          email: e.recipient_email 
-        }))
-      );
-      
-      const response = await bulkCancelEmails(emailIds);
-      console.log('Cancel response:', response);
+      await bulkCancelEmails(Array.from(selectedEmails));
       setSelectedEmails(new Set());
       await loadEmails(false);
-      // Show success message
-      setError(''); // Clear any errors
     } catch (err: any) {
-      console.error('Cancel error:', err);
-      console.error('Error response:', err.response?.data);
-      const errorMessage = err.response?.data?.error || err.response?.data?.details || err.message || 'Failed to cancel emails';
-      setError(errorMessage);
-      
-      // If it's a "no scheduled emails" error, refresh the list
-      if (errorMessage.includes('scheduled')) {
-        await loadEmails(false);
-      }
+      const msg = err.response?.data?.error || err.message || 'Failed to cancel emails';
+      setError(msg);
+      if (msg.includes('scheduled')) await loadEmails(false);
     } finally {
       setBulkActionLoading(false);
     }
   };
 
-  const statusBadge = (status: string) => {
-    const map: Record<string, string> = {
-      scheduled: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-      sent: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-      failed: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-      cancelled: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
-    };
-    return map[status] || 'bg-gray-100 text-gray-800';
+  const handleExport = () => {
+    const url = getExportUrl(activeTab === 'sent' ? 'sent' : 'scheduled');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
+  const handleCancelCampaign = async (id: string, name: string) => {
+    if (!confirm(`Cancel campaign "${name}"? All scheduled emails in this campaign will be cancelled.`)) return;
+    try {
+      await cancelCampaign(id);
+      await loadEmails(false);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to cancel campaign');
+    }
+  };
+
+  const monthlyPct = permissions?.usage?.monthly?.limit > 0
+    ? Math.min(100, (permissions.usage.monthly.used / permissions.usage.monthly.limit) * 100)
+    : 0;
+  const hourlyPct = permissions?.usage?.hourly?.limit > 0
+    ? Math.min(100, (permissions.usage.hourly.used / permissions.usage.hourly.limit) * 100)
+    : 0;
+
+  const tabs: { id: Tab; label: string; count?: number }[] = [
+    { id: 'scheduled', label: 'Scheduled', count: scheduledTotal || undefined },
+    { id: 'sent', label: 'Sent', count: sentTotal || undefined },
+    { id: 'campaigns', label: 'Campaigns' },
+    { id: 'analytics', label: 'Analytics' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
       <Header user={user} setUser={setUser} />
 
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Subscription Status Banner */}
-        {subscription && (
-          <div className={`mb-6 rounded-xl p-4 border ${
-            subscription.plan === 'starter' 
-              ? 'bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700'
-              : subscription.plan === 'professional'
-              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-              : 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  subscription.plan === 'starter' 
-                    ? 'bg-gray-200 dark:bg-gray-700'
-                    : subscription.plan === 'professional'
-                    ? 'bg-blue-500'
-                    : 'bg-purple-500'
-                }`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+
+        {/* Quota / Subscription Banner */}
+        {permissions && (
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
+            <div className="flex flex-wrap items-center gap-6">
+
+              {/* Plan badge */}
+              <div className="flex items-center gap-3 min-w-fit">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
                   <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white capitalize">
-                    {subscription.plan} Plan
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {subscription.plan === 'starter' 
-                      ? '1,000 emails/month'
-                      : subscription.emailLimit === -1 
-                      ? 'Unlimited emails'
-                      : `${subscription.emailLimit.toLocaleString()} emails/month`}
-                  </p>
+                  <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">Plan</p>
+                  <p className="font-semibold text-gray-900 dark:text-white capitalize">{permissions.role}</p>
                 </div>
               </div>
-              
-              {/* Usage Stats */}
-              {permissions && permissions.usage && (
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">This Month</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {permissions.usage.monthly.used.toLocaleString()} / {
-                        permissions.usage.monthly.limit === -1 
-                          ? '∞' 
-                          : permissions.usage.monthly.limit.toLocaleString()
-                      }
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">This Hour</p>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      {permissions.usage.hourly.used} / {
-                        permissions.usage.hourly.limit === -1 
-                          ? '∞' 
-                          : permissions.usage.hourly.limit
-                      }
-                    </p>
-                  </div>
-                </div>
-              )}
 
-              {subscription.plan !== 'starter' && subscription.end_date && (
-                <div className="text-right">
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Valid until</p>
-                  <p className="font-medium text-gray-900 dark:text-white">
-                    {new Date(subscription.end_date).toLocaleDateString('en-IN', {
-                      timeZone: 'Asia/Kolkata'
-                    })}
-                  </p>
+              {/* Monthly quota */}
+              <div className="flex-1 min-w-44">
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">
+                  <span>Monthly emails</span>
+                  <span>
+                    {permissions.usage.monthly.used.toLocaleString()} /{' '}
+                    {permissions.usage.monthly.limit === -1 ? '∞' : permissions.usage.monthly.limit.toLocaleString()}
+                  </span>
                 </div>
-              )}
-              {subscription.plan === 'starter' && (
+                <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${monthlyPct > 80 ? 'bg-red-500' : monthlyPct > 60 ? 'bg-yellow-500' : 'bg-blue-500'}`}
+                    style={{ width: `${permissions.usage.monthly.limit === -1 ? 10 : monthlyPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Hourly quota */}
+              <div className="flex-1 min-w-36">
+                <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1.5 font-medium">
+                  <span>This hour</span>
+                  <span>
+                    {permissions.usage.hourly.used} /{' '}
+                    {permissions.usage.hourly.limit === -1 ? '∞' : permissions.usage.hourly.limit}
+                  </span>
+                </div>
+                <div className="h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${hourlyPct > 80 ? 'bg-red-500' : hourlyPct > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                    style={{ width: `${permissions.usage.hourly.limit === -1 ? 10 : hourlyPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {subscription?.plan === 'starter' && (
                 <button
                   onClick={() => window.location.href = '/'}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap hover:shadow-md transition"
                 >
                   Upgrade Plan
                 </button>
@@ -299,72 +260,94 @@ function Dashboard({ user, setUser }: DashboardProps) {
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex gap-2">
-            {(['scheduled', 'sent', 'analytics'] as const).map(tab => (
+        {/* Tabs + Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-1 shadow-sm">
+            {tabs.map(tab => (
               <button
-                key={tab}
-                onClick={() => {
-                  setActiveTab(tab);
-                  setSelectedEmails(new Set());
-                  setSearchQuery('');
-                }}
-                className={`px-6 py-2 rounded-lg font-medium transition capitalize ${
-                  activeTab === tab
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700'
+                key={tab.id}
+                onClick={() => { setActiveTab(tab.id); setSelectedEmails(new Set()); setSearchQuery(''); }}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  activeTab === tab.id
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
-                {tab === 'scheduled' ? 'Scheduled' : tab === 'sent' ? 'Sent' : 'Analytics'}
+                {tab.label}
+                {tab.count !== undefined && tab.count > 0 && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${
+                    activeTab === tab.id
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}>
+                    {tab.count > 999 ? '999+' : tab.count}
+                  </span>
+                )}
               </button>
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
-            {activeTab !== 'analytics' && (
+          <div className="flex items-center gap-2">
+            {(activeTab === 'scheduled' || activeTab === 'sent') && (
               <div className="relative">
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search emails..."
-                  className="pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none w-64"
+                  className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm w-52 shadow-sm"
                 />
-                <svg className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
               </div>
             )}
+
+            {(activeTab === 'scheduled' || activeTab === 'sent') && (
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
+                title="Export as CSV"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export
+              </button>
+            )}
+
             <button
               onClick={() => setShowTemplates(true)}
-              className="bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-5 py-2.5 rounded-lg font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition flex items-center gap-2 border border-gray-200 dark:border-gray-700"
+              className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               Templates
             </button>
+
             <button
               onClick={() => setShowCompose(true)}
-              className="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition flex items-center gap-2"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-sm hover:shadow-md"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Compose Email
+              Compose
             </button>
           </div>
         </div>
 
+        {/* Bulk cancel bar */}
         {selectedEmails.size > 0 && activeTab === 'scheduled' && (
-          <div className="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 flex items-center justify-between">
-            <span className="text-sm text-blue-800 dark:text-blue-200 font-medium">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl px-5 py-3 flex items-center justify-between">
+            <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
               {selectedEmails.size} email{selectedEmails.size !== 1 ? 's' : ''} selected
             </span>
             <button
               onClick={handleBulkCancel}
               disabled={bulkActionLoading}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-50"
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition"
             >
               {bulkActionLoading ? 'Cancelling...' : 'Cancel Selected'}
             </button>
@@ -372,165 +355,306 @@ function Dashboard({ user, setUser }: DashboardProps) {
         )}
 
         {error && (
-          <div className="mb-4 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg text-sm">
+          <div className="px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-sm">
             {error}
           </div>
         )}
 
+        {/* Main content */}
         {activeTab === 'analytics' ? (
           <ErrorBoundary>
             <AnalyticsDashboard scheduledEmails={scheduledEmails} sentEmails={sentEmails} />
           </ErrorBoundary>
+        ) : activeTab === 'campaigns' ? (
+          <CampaignsView
+            campaigns={campaigns}
+            loading={loading}
+            onCancel={handleCancelCampaign}
+          />
         ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm overflow-hidden">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
             {loading ? (
-              <div className="p-12 flex flex-col items-center gap-3 text-gray-400">
-                <div className="w-7 h-7 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading emails...</span>
+              <div className="p-16 flex flex-col items-center gap-3 text-gray-400">
+                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Loading...</span>
               </div>
             ) : activeTab === 'scheduled' ? (
               filteredScheduledEmails.length === 0 ? (
-                <EmptyState message={searchQuery ? "No emails match your search" : "No scheduled emails"} icon="inbox" />
+                <EmptyState
+                  title={searchQuery ? 'No emails match your search' : 'No scheduled emails'}
+                  desc={searchQuery ? 'Try a different keyword.' : 'Click Compose to schedule your first campaign.'}
+                  icon="inbox"
+                />
               ) : (
-                <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                    <tr>
-                      <th className="px-6 py-3 text-left">
-                        <input
-                          type="checkbox"
-                          checked={selectedEmails.size === filteredScheduledEmails.length && filteredScheduledEmails.length > 0}
-                          onChange={toggleSelectAll}
-                          className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                        />
-                      </th>
-                      {['Email', 'Subject', 'Scheduled At', 'Status', 'Actions'].map(h => (
-                        <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {filteredScheduledEmails.map((email) => (
-                      <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition">
-                        <td className="px-6 py-4">
-                          <input
-                            type="checkbox"
-                            checked={selectedEmails.has(email.id)}
-                            onChange={() => toggleEmailSelection(email.id)}
-                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                          />
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">{email.recipient_email}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">{email.subject}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                          {new Date(email.scheduled_at).toLocaleString('en-IN', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: false,
-                            timeZone: 'Asia/Kolkata'
-                          })}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${statusBadge(email.status)}`}>
-                            {email.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <button
-                            onClick={() => setPreviewEmail(email)}
-                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
-                          >
-                            Preview
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px]">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+                          <th className="px-5 py-3.5 text-left">
+                            <input
+                              type="checkbox"
+                              checked={selectedEmails.size === filteredScheduledEmails.length && filteredScheduledEmails.length > 0}
+                              onChange={toggleSelectAll}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                            />
+                          </th>
+                          {['Recipient', 'Subject', 'Scheduled At', 'Status', ''].map(h => (
+                            <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                        {filteredScheduledEmails.map(email => (
+                          <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                            <td className="px-5 py-4">
+                              <input type="checkbox" checked={selectedEmails.has(email.id)} onChange={() => toggleEmailSelection(email.id)} className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                            </td>
+                            <td className="px-5 py-4 text-sm text-gray-900 dark:text-gray-100 font-medium">{email.recipient_email}</td>
+                            <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate">{email.subject}</td>
+                            <td className="px-5 py-4 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                              {new Date(email.scheduled_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                            </td>
+                            <td className="px-5 py-4">
+                              <StatusBadge status={email.status} />
+                            </td>
+                            <td className="px-5 py-4">
+                              <button onClick={() => setPreviewEmail(email)} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium transition">
+                                Preview
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Pagination
+                    page={scheduledPage} total={scheduledTotal} pageSize={PAGE_SIZE} hasMore={scheduledHasMore}
+                    onPrev={() => setScheduledPage(p => Math.max(1, p - 1))}
+                    onNext={() => setScheduledPage(p => p + 1)}
+                  />
+                </>
               )
             ) : (
-              filteredSentEmails.length === 0 ? (
-                <EmptyState message={searchQuery ? "No emails match your search" : "No sent emails"} icon="check" />
+              sentEmails.length === 0 ? (
+                <EmptyState
+                  title={searchQuery ? 'No emails match your search' : 'No sent emails yet'}
+                  desc={searchQuery ? 'Try a different keyword.' : 'Sent emails will appear here after your scheduled campaigns run.'}
+                  icon="check"
+                />
               ) : (
-                <table className="w-full">
-                  <thead className="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                    <tr>
-                      {['Email', 'Subject', 'Sent At', 'Status'].map(h => (
-                        <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {filteredSentEmails.map((email) => (
-                      <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition">
-                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100">{email.recipient_email}</td>
-                        <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 max-w-xs truncate">{email.subject}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                          {new Date(email.sent_at).toLocaleString('en-IN', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: false,
-                            timeZone: 'Asia/Kolkata'
-                          })}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${statusBadge(email.status)}`}>
-                            {email.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[640px]">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+                          {['Recipient', 'Subject', 'Sent At', 'Status', 'Bounce'].map(h => (
+                            <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                        {sentEmails.map(email => (
+                          <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors" title={email.error_message || ''}>
+                            <td className="px-5 py-4 text-sm text-gray-900 dark:text-gray-100 font-medium">{email.recipient_email}</td>
+                            <td className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300 max-w-xs truncate">{email.subject}</td>
+                            <td className="px-5 py-4 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                              {email.sent_at
+                                ? new Date(email.sent_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+                                : '—'}
+                            </td>
+                            <td className="px-5 py-4">
+                              <StatusBadge status={email.status} />
+                            </td>
+                            <td className="px-5 py-4">
+                              {email.bounce_type ? (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${email.bounce_type === 'hard' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
+                                  {email.bounce_type}
+                                </span>
+                              ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <Pagination
+                    page={sentPage} total={sentTotal} pageSize={PAGE_SIZE} hasMore={sentHasMore}
+                    onPrev={() => setSentPage(p => Math.max(1, p - 1))}
+                    onNext={() => setSentPage(p => p + 1)}
+                  />
+                </>
               )
             )}
           </div>
         )}
       </div>
 
-      {showCompose && (
-        <ComposeModal
-          onClose={() => setShowCompose(false)}
-          onSuccess={() => loadEmails(true)}
-        />
-      )}
-
-      {showTemplates && (
-        <TemplatesModal
-          onClose={() => setShowTemplates(false)}
-        />
-      )}
-
-      {previewEmail && (
-        <EmailPreviewModal
-          email={previewEmail}
-          onClose={() => setPreviewEmail(null)}
-        />
-      )}
+      {showCompose   && <ComposeModal onClose={() => setShowCompose(false)} onSuccess={() => loadEmails(true)} />}
+      {showTemplates && <TemplatesModal onClose={() => setShowTemplates(false)} />}
+      {previewEmail  && <EmailPreviewModal email={previewEmail} onClose={() => setPreviewEmail(null)} />}
     </div>
   );
 }
 
-function EmptyState({ message, icon }: { message: string; icon: 'inbox' | 'check' }) {
+/* ── Sub-components ─────────────────────────────────────────── */
+
+function CampaignsView({ campaigns, loading, onCancel }: {
+  campaigns: Campaign[];
+  loading: boolean;
+  onCancel: (id: string, name: string) => void;
+}) {
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-16 flex flex-col items-center gap-3 text-gray-400 shadow-sm">
+        <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-sm">Loading campaigns...</span>
+      </div>
+    );
+  }
+
+  if (campaigns.length === 0) {
+    return (
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+        <EmptyState
+          title="No campaigns yet"
+          desc="Campaigns are created automatically when you compose and schedule emails with a campaign name."
+          icon="campaigns"
+        />
+      </div>
+    );
+  }
+
+  const statusColor: Record<string, string> = {
+    active:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    completed: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+    paused:    'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  };
+
   return (
-    <div className="p-16 flex flex-col items-center gap-3 text-gray-400">
-      {icon === 'inbox' ? (
-        <svg className="w-14 h-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
-      ) : (
-        <svg className="w-14 h-14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      )}
-      <p className="text-base">{message}</p>
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[800px]">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+              {['Campaign', 'Status', 'Emails', 'Sent', 'Failed', 'Success Rate', 'Created', ''].map(h => (
+                <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+            {campaigns.map(c => (
+              <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                <td className="px-5 py-4">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{c.name || `Campaign #${c.id.slice(0,6)}`}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">ID: {c.id.slice(0, 8)}…</p>
+                </td>
+                <td className="px-5 py-4">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColor[c.status] || 'bg-gray-100 text-gray-600'}`}>
+                    {c.status}
+                  </span>
+                </td>
+                <td className="px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{c.total_emails.toLocaleString()}</td>
+                <td className="px-5 py-4 text-sm text-green-600 dark:text-green-400 font-medium">{c.sent.toLocaleString()}</td>
+                <td className="px-5 py-4 text-sm text-red-500 dark:text-red-400">{c.failed > 0 ? c.failed.toLocaleString() : '—'}</td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden w-16">
+                      <div className="h-full bg-green-500 rounded-full" style={{ width: `${c.success_rate}%` }} />
+                    </div>
+                    <span className="text-xs font-medium text-gray-600 dark:text-gray-400">{c.success_rate}%</span>
+                  </div>
+                </td>
+                <td className="px-5 py-4 text-sm text-gray-400 whitespace-nowrap">
+                  {new Date(c.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </td>
+                <td className="px-5 py-4">
+                  {c.status === 'active' && (
+                    <button
+                      onClick={() => onCancel(c.id, c.name || 'this campaign')}
+                      className="text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 font-medium transition"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    scheduled: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    sent:      'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    failed:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  };
+  return (
+    <span className={`inline-block px-2.5 py-0.5 text-xs font-semibold rounded-full capitalize ${map[status] || 'bg-gray-100 text-gray-600'}`}>
+      {status}
+    </span>
+  );
+}
+
+function Pagination({ page, total, pageSize, hasMore, onPrev, onNext }: {
+  page: number; total: number; pageSize: number; hasMore: boolean;
+  onPrev: () => void; onNext: () => void;
+}) {
+  if (total <= pageSize) return null;
+  const start = (page - 1) * pageSize + 1;
+  const end   = Math.min(page * pageSize, total);
+  return (
+    <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 dark:border-gray-800 text-sm text-gray-500 dark:text-gray-400">
+      <span>Showing {start.toLocaleString()}–{end.toLocaleString()} of {total.toLocaleString()}</span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={onPrev} disabled={page === 1}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-xs font-medium"
+        >
+          ← Prev
+        </button>
+        <span className="px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">{page}</span>
+        <button
+          onClick={onNext} disabled={!hasMore}
+          className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800 transition text-xs font-medium"
+        >
+          Next →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ title, desc, icon }: { title: string; desc: string; icon: 'inbox' | 'check' | 'campaigns' }) {
+  return (
+    <div className="py-20 flex flex-col items-center gap-4 text-center px-6">
+      <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+        {icon === 'inbox' && (
+          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        )}
+        {icon === 'check' && (
+          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
+        {icon === 'campaigns' && (
+          <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        )}
+      </div>
+      <div>
+        <p className="text-base font-semibold text-gray-700 dark:text-gray-300">{title}</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-sm">{desc}</p>
+      </div>
     </div>
   );
 }
