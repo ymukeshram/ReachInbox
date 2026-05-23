@@ -536,9 +536,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Keep-alive for free tier (self-ping)
-if (isProd) {
-  const selfUrl = process.env.RENDER_EXTERNAL_URL || `https://reachify-backend-jep1.onrender.com`;
-  
+const selfUrl = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_URL;
+if (isProd && selfUrl) {
   // Ping every 14 minutes (just before 15-min timeout)
   setInterval(() => {
     fetch(`${selfUrl}/health`)
@@ -551,7 +550,7 @@ if (isProd) {
       })
       .catch((err) => logger.warn({ error: err.message }, 'Keep-alive ping error'));
   }, 14 * 60 * 1000); // 14 minutes
-  
+
   logger.info('Keep-alive mechanism enabled (14-minute interval)');
 }
 

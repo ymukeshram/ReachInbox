@@ -16,6 +16,15 @@ const MAX_ATTACHMENT_SIZE   = 5 * 1024 * 1024;  // 5 MB max attachment
 const MAX_EMAILS_PER_BATCH  = 1000;
 const PAGE_SIZE             = 50;
 
+interface UploadedFile {
+  buffer: Buffer;
+  size: number;
+  originalname: string;
+  mimetype: string;
+  fieldname: string;
+  encoding: string;
+}
+
 const router = Router();
 // Support two file fields: 'file' (CSV) and 'attachment' (PDF/doc)
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FILE_SIZE } });
@@ -54,7 +63,7 @@ router.post(
     try {
       const { subject, body, startTime, delayBetweenEmails, hourlyLimit, campaignName } = req.body;
 
-      const files = req.files as { [f: string]: Express.Multer.File[] } | undefined;
+      const files = req.files as { [f: string]: UploadedFile[] } | undefined;
       const csvFile        = files?.['file']?.[0];
       const attachmentFile = files?.['attachment']?.[0];
 
