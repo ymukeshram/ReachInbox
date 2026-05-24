@@ -24,8 +24,10 @@ import contactRoutes from './routes/contacts';
 import { emailQueue, emailWorker } from './queue/emailQueue';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
-import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { errorHandler } from './middleware/errorHandler';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -484,7 +486,20 @@ async function start() {
   }
 }
 
-app.use(notFoundHandler);
+// Serve React frontend for all non-API routes
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist, { maxAge: '7d', etag: true, index: false }));
+  app.get('*', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+} else {
+  app.get('*', (_req, res) => {
+    res.status(503).send('Frontend build not found. Deployment in progress.');
+  });
+}
 app.use(errorHandler);
 
 // Graceful shutdown
