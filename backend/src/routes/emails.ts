@@ -203,18 +203,29 @@ router.post(
 
       await client.query('BEGIN');
       try {
-        await client.query(
-          `INSERT INTO emails (id, user_id, recipient_email, subject, body, scheduled_at, status, campaign_id, attachment_id)
-           VALUES ${placeholders.map((p, i) => p.replace('$8)', `$8,$${i*9+9})`)).join(',')}`,
-          values.concat(jobsToQueue.map(() => attachmentId))
-        ).catch(async () => {
-          // Fallback: insert without attachment_id if column doesn't exist yet
+        const N = placeholders.length;
+        const placeholdersWithAttach = placeholders.map((p, i) => {
+          const lastBaseIdx = i * 8 + 8;       // $8, $16, $24 ...
+          const attachIdx   = N * 8 + i + 1;   // appended after all base params
+          return p.replace(`$${lastBaseIdx})`, `$${lastBaseIdx},$${attachIdx})`);
+        });
+
+        await client.query('SAVEPOINT before_email_insert');
+        try {
+          await client.query(
+            `INSERT INTO emails (id, user_id, recipient_email, subject, body, scheduled_at, status, campaign_id, attachment_id)
+             VALUES ${placeholdersWithAttach.join(',')}`,
+            values.concat(jobsToQueue.map(() => attachmentId))
+          );
+        } catch {
+          await client.query('ROLLBACK TO SAVEPOINT before_email_insert');
           await client.query(
             `INSERT INTO emails (id, user_id, recipient_email, subject, body, scheduled_at, status, campaign_id)
              VALUES ${placeholders.join(',')}`,
             values
           );
-        });
+        }
+
         await Promise.all(
           jobsToQueue.map(j => emailQueue.add('send-email', j.data, { delay: j.delay, jobId: j.id }))
         );
