@@ -12,6 +12,192 @@ function Home() {
   const [selectedPlan, setSelectedPlan] = useState<'professional' | 'enterprise' | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [activeIndustry, setActiveIndustry] = useState(0);
+
+  const industries = [
+    {
+      id: 'job-seekers',
+      label: 'Job Seekers',
+      icon: '🎯',
+      color: 'blue',
+      gradient: 'from-blue-500 to-cyan-500',
+      bg: 'bg-blue-50 dark:bg-blue-900/20',
+      border: 'border-blue-500',
+      text: 'text-blue-600 dark:text-blue-400',
+      badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+      headline: 'Land your dream job, faster',
+      subheadline: 'Stop applying into the void. Cold email the hiring manager directly.',
+      description: 'Most job applications get lost in ATS. Reachify lets you find hiring managers and recruiters, personalise every email with their name and company, and automatically follow up if they don\'t reply — all without lifting a finger after the first setup.',
+      bullets: [
+        'Upload a CSV of 500+ companies and HR contacts in seconds',
+        'Personalise every email with {{company}}, {{role}}, {{first_name}}',
+        'Auto follow-up after 3 days if no reply — politely persistent',
+        'Track exactly who opened your email and when',
+        'Built-in spam checker so your email lands in inbox, not spam',
+      ],
+      stat: { value: '3×', label: 'more interview calls vs. job portals' },
+      example: {
+        subject: 'Quick question about the {{role}} role at {{company}}',
+        body: 'Hi {{first_name}},\n\nI noticed {{company}} is hiring for {{role}}. I\'ve spent 3 years doing exactly this at [Previous Co] and would love to connect.\n\nWould a 15-min call work this week?\n\nBest,\nSumant',
+      },
+    },
+    {
+      id: 'edtech',
+      label: 'EdTech',
+      icon: '🎓',
+      color: 'purple',
+      gradient: 'from-purple-500 to-violet-500',
+      bg: 'bg-purple-50 dark:bg-purple-900/20',
+      border: 'border-purple-500',
+      text: 'text-purple-600 dark:text-purple-400',
+      badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
+      headline: 'Fill every batch. Retain every student.',
+      subheadline: 'Turn course inquiries into enrollments with automated nurture sequences.',
+      description: 'EdTech platforms lose 60–70% of leads who never convert. Reachify helps you send personalised enrollment reminders, course recommendations, and re-engagement campaigns at scale — without a dedicated email marketing team.',
+      bullets: [
+        'Send batch announcements to 10,000 leads in minutes',
+        'Personalise with {{student_name}}, {{course}}, {{discount_code}}',
+        'Multi-step sequences: reminder → deadline alert → final offer',
+        'Track open rates per campaign to see what messaging works',
+        'Auto-suppress students who already enrolled',
+      ],
+      stat: { value: '45%', label: 'higher enrollment conversion rate' },
+      example: {
+        subject: '{{first_name}}, your spot in {{course}} closes in 48 hours',
+        body: 'Hi {{first_name}},\n\nYou showed interest in {{course}} last week — just a heads up that only 12 seats remain and the batch starts Monday.\n\nUse code EARLY20 for ₹2,000 off. Link: [course_url]\n\nLet me know if you have questions!\n\nTeam Reachify Academy',
+      },
+    },
+    {
+      id: 'sales',
+      label: 'Sales Teams',
+      icon: '📈',
+      color: 'green',
+      gradient: 'from-green-500 to-emerald-500',
+      bg: 'bg-green-50 dark:bg-green-900/20',
+      border: 'border-green-500',
+      text: 'text-green-600 dark:text-green-400',
+      badge: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
+      headline: 'Build pipeline. Close deals. Repeat.',
+      subheadline: 'Turn cold prospects into warm leads with multi-touch email sequences.',
+      description: 'B2B sales is a numbers game. Reachify lets your team send hundreds of personalised cold emails daily, automate follow-ups, rotate SMTP accounts to avoid spam filters, and track which prospects are engaging — so reps can focus on the warm ones.',
+      bullets: [
+        'Import prospect lists from LinkedIn exports or CRM CSV',
+        'Multi-SMTP rotation across team accounts for higher deliverability',
+        '5-step sequences: intro → value → case study → objection → breakup',
+        'Real-time alerts when a prospect opens 3+ times (buy signal)',
+        'Campaign-level analytics: open rate, reply rate, bounce rate',
+      ],
+      stat: { value: '2.7×', label: 'more pipeline from same-size team' },
+      example: {
+        subject: 'How {{company}} could save ₹4L/year on email costs',
+        body: 'Hi {{first_name}},\n\nI noticed {{company}} is using Mailchimp — most companies your size end up overpaying by ₹3–5L/year.\n\nWe help {{industry}} companies cut email costs by 60% with better deliverability.\n\nOpen to a quick 20-min call?\n\nSumant | Reachify',
+      },
+    },
+    {
+      id: 'startups',
+      label: 'Startups',
+      icon: '🚀',
+      color: 'orange',
+      gradient: 'from-orange-500 to-amber-500',
+      bg: 'bg-orange-50 dark:bg-orange-900/20',
+      border: 'border-orange-500',
+      text: 'text-orange-600 dark:text-orange-400',
+      badge: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
+      headline: 'Raise faster. Partner smarter.',
+      subheadline: 'Cold email 500 investors in a weekend without burning your reputation.',
+      description: 'Warm intros are great — but you can\'t always get one. Reachify lets founders send highly personalised investor outreach at scale, follow up automatically without being annoying, and track which investors opened the deck. No agency needed.',
+      bullets: [
+        'Personalise with {{investor_name}}, {{fund}}, {{portfolio_co}}',
+        'Attach your pitch deck to every email in the batch',
+        'Know instantly when an investor opens your email (real-time)',
+        'Automated follow-up sequences — respectful, not spammy',
+        'Separate campaigns for angels, VCs, and strategic partners',
+      ],
+      stat: { value: '12%', label: 'avg investor reply rate for personalised cold outreach' },
+      example: {
+        subject: 'Seed round — {{portfolio_co}} told us to reach out',
+        body: 'Hi {{investor_name}},\n\nWe\'re building the Stripe for B2B email outreach in India — ₹2Cr ARR in 8 months, 200+ paying customers.\n\nKnowing your investment in {{portfolio_co}}, thought this might be relevant.\n\nDeck: [link] — 5 slides, 2 minutes.\n\nSumant, Reachify',
+      },
+    },
+    {
+      id: 'recruiters',
+      label: 'Recruiters',
+      icon: '🤝',
+      color: 'pink',
+      gradient: 'from-pink-500 to-rose-500',
+      bg: 'bg-pink-50 dark:bg-pink-900/20',
+      border: 'border-pink-500',
+      text: 'text-pink-600 dark:text-pink-400',
+      badge: 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300',
+      headline: 'Source passive talent at scale.',
+      subheadline: 'Reach 1,000 candidates before your competitor even shortlists 10.',
+      description: 'The best candidates aren\'t applying on Naukri. Reachify helps recruiters and talent acquisition teams send personalised outreach to passive candidates at scale, automate follow-ups, and track engagement — filling positions weeks faster than traditional methods.',
+      bullets: [
+        'Import candidate lists from LinkedIn or internal databases',
+        'Personalise with {{candidate_name}}, {{current_company}}, {{role}}',
+        'Sequence: intro → role details → salary range → final nudge',
+        'Track who opened (interested) vs. who ignored (move on)',
+        'Auto-suppress candidates who replied or unsubscribed',
+      ],
+      stat: { value: '40%', label: 'faster time-to-hire vs. job board-only approach' },
+      example: {
+        subject: 'Are you open to a Senior {{role}} role at a funded startup?',
+        body: 'Hi {{first_name}},\n\nI came across your profile and was impressed by your work at {{current_company}}.\n\nWe\'re hiring a Senior {{role}} at [Company] — fully remote, ₹30–40 LPA, ESOP included.\n\nIf you\'re open to hearing more, happy to share details. Takes 5 minutes.\n\nBest,\nSumant | [Agency]',
+      },
+    },
+    {
+      id: 'realestate',
+      label: 'Real Estate',
+      icon: '🏢',
+      color: 'teal',
+      gradient: 'from-teal-500 to-cyan-600',
+      bg: 'bg-teal-50 dark:bg-teal-900/20',
+      border: 'border-teal-500',
+      text: 'text-teal-600 dark:text-teal-400',
+      badge: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300',
+      headline: 'List more. Sell faster.',
+      subheadline: 'Blast property listings to 5,000 qualified buyers in under a minute.',
+      description: 'Real estate runs on speed and relationships. Reachify lets agents and brokers blast new listings, announce open houses, and follow up with interested buyers — all personalised with property details, buyer names, and budget ranges.',
+      bullets: [
+        'Send new property alerts to your entire buyer database instantly',
+        'Personalise with {{buyer_name}}, {{locality}}, {{budget_range}}',
+        'Follow-up sequences for site visit → negotiation → closing',
+        'Track which buyers opened and clicked for listing links',
+        'Seasonal campaigns: Diwali offers, year-end clearance, etc.',
+      ],
+      stat: { value: '28%', label: 'more site visits from personalised listing emails' },
+      example: {
+        subject: '{{first_name}}, new 3BHK in {{locality}} — within your budget',
+        body: 'Hi {{first_name}},\n\nA new 3BHK just listed in {{locality}} — ₹{{price}}L, 1,400 sq ft, ready to move.\n\nKnowing you were looking in this area under ₹{{budget}}L, thought you\'d want first look.\n\nSite visit this Saturday? I can arrange a private showing.\n\nSumant | Reachify Realty',
+      },
+    },
+    {
+      id: 'ecommerce',
+      label: 'E-commerce',
+      icon: '🛒',
+      color: 'red',
+      gradient: 'from-red-500 to-rose-600',
+      bg: 'bg-red-50 dark:bg-red-900/20',
+      border: 'border-red-500',
+      text: 'text-red-600 dark:text-red-400',
+      badge: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+      headline: 'Recover revenue. Drive repeat purchases.',
+      subheadline: 'Re-engage dormant buyers and recover abandoned carts at scale.',
+      description: 'Over 70% of online carts are abandoned. Reachify helps e-commerce brands send personalised cart recovery emails, seasonal promotions, and loyalty campaigns — with precise scheduling and real-time tracking so you know exactly which email drove the sale.',
+      bullets: [
+        'Cart recovery sequences: 1hr → 24hr → 72hr with escalating offers',
+        'Personalise with {{first_name}}, {{product}}, {{discount_code}}',
+        'Seasonal blasts: Diwali, End of Season, Flash Sales in minutes',
+        'Re-engagement for customers inactive 60+ days',
+        'Track revenue attribution per email campaign',
+      ],
+      stat: { value: '15–20%', label: 'cart recovery rate with 3-step sequences' },
+      example: {
+        subject: '{{first_name}}, your {{product}} is waiting 🛒 — 10% off inside',
+        body: 'Hi {{first_name}},\n\nYou left {{product}} in your cart. Here\'s a one-time 10% off to help you decide:\n\nCode: {{discount_code}} · Valid 24 hours\n\n[Complete my order]\n\nQuestions? Reply to this email — we\'re real humans.\n\nTeam [Brand]',
+      },
+    },
+  ];
 
   useEffect(() => {
     setIsVisible(true);
@@ -185,7 +371,7 @@ function Home() {
           </div>
 
           <div className="hidden md:flex items-center gap-8">
-            {[['Features', '#features'], ['How It Works', '#how-it-works'], ['Pricing', '#pricing'], ['FAQ', '#faq']].map(([label, href]) => (
+            {[['Features', '#features'], ['Use Cases', '#use-cases'], ['How It Works', '#how-it-works'], ['Pricing', '#pricing'], ['FAQ', '#faq']].map(([label, href]) => (
               <a key={label} href={href} className="text-sm text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors font-medium">
                 {label}
               </a>
@@ -330,6 +516,127 @@ function Home() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Industry Use Cases */}
+      <section id="use-cases" className="py-24 px-6 bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-sm font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">Use Cases</p>
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4">
+              Built for every industry
+            </h2>
+            <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Whether you're a job seeker, a startup founder, or a sales team — Reachify adapts to your outreach goal.
+            </p>
+          </div>
+
+          {/* Tab bar */}
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-10 scrollbar-hide justify-start md:justify-center">
+            {industries.map((ind, i) => (
+              <button
+                key={ind.id}
+                onClick={() => setActiveIndustry(i)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all duration-200 flex-shrink-0 border-2 ${
+                  activeIndustry === i
+                    ? `${ind.border} ${ind.bg} ${ind.text}`
+                    : 'border-transparent bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                <span className="text-base">{ind.icon}</span>
+                {ind.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content panel */}
+          {(() => {
+            const ind = industries[activeIndustry];
+            return (
+              <div className="grid lg:grid-cols-2 gap-8 items-start">
+                {/* Left: info */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 border border-gray-100 dark:border-gray-700 h-full">
+                  <span className={`inline-block text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full mb-4 ${ind.badge}`}>
+                    {ind.icon} {ind.label}
+                  </span>
+                  <h3 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{ind.headline}</h3>
+                  <p className={`text-base font-medium mb-4 ${ind.text}`}>{ind.subheadline}</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed mb-6">{ind.description}</p>
+
+                  <ul className="space-y-3 mb-8">
+                    {ind.bullets.map((b, j) => (
+                      <li key={j} className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                        <span className={`mt-0.5 w-5 h-5 rounded-full bg-gradient-to-br ${ind.gradient} flex items-center justify-center flex-shrink-0`}>
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </span>
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* Stat highlight */}
+                  <div className={`flex items-center gap-4 p-4 rounded-xl ${ind.bg} border ${ind.border} border-opacity-30`}>
+                    <span className={`text-4xl font-black bg-gradient-to-r ${ind.gradient} bg-clip-text text-transparent`}>
+                      {ind.stat.value}
+                    </span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{ind.stat.label}</span>
+                  </div>
+                </div>
+
+                {/* Right: email preview */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden shadow-sm">
+                  {/* Email client chrome */}
+                  <div className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 px-5 py-3 flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-red-400" />
+                    <div className="w-3 h-3 rounded-full bg-yellow-400" />
+                    <div className="w-3 h-3 rounded-full bg-green-400" />
+                    <span className="ml-3 text-xs text-gray-400 font-medium">Email Preview</span>
+                  </div>
+
+                  <div className="p-6">
+                    {/* Subject line */}
+                    <div className="mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
+                      <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Subject</p>
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-snug">{ind.example.subject}</p>
+                    </div>
+
+                    {/* Body */}
+                    <div className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line font-mono bg-gray-50 dark:bg-gray-900/50 rounded-xl p-4 text-xs">
+                      {ind.example.body}
+                    </div>
+
+                    {/* Personalisation tokens */}
+                    <div className="mt-5">
+                      <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">Personalisation tokens auto-filled per recipient</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[...new Set([
+                          ...(ind.example.subject.match(/\{\{[^}]+\}\}/g) || []),
+                          ...(ind.example.body.match(/\{\{[^}]+\}\}/g) || []),
+                        ])].map((token, k) => (
+                          <span key={k} className={`text-xs font-mono px-2.5 py-1 rounded-lg font-semibold ${ind.badge}`}>
+                            {token}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* CTA */}
+                    <div className="mt-6 pt-5 border-t border-gray-100 dark:border-gray-700">
+                      <button
+                        onClick={() => navigate('/login')}
+                        className={`w-full py-3 rounded-xl font-semibold text-sm text-white bg-gradient-to-r ${ind.gradient} hover:opacity-90 transition shadow-sm`}
+                      >
+                        Start your {ind.label} campaign free →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </section>
 
@@ -576,10 +883,13 @@ function Home() {
             <div>
               <h4 className="font-semibold text-sm mb-4 text-gray-300 uppercase tracking-wider">Use Cases</h4>
               <ul className="space-y-3 text-sm text-gray-400">
-                <li><span className="hover:text-white transition cursor-default">Job Applications</span></li>
-                <li><span className="hover:text-white transition cursor-default">Sales Outreach</span></li>
-                <li><span className="hover:text-white transition cursor-default">Investor Outreach</span></li>
-                <li><span className="hover:text-white transition cursor-default">Newsletter Campaigns</span></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Job Seekers</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">EdTech</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Sales Teams</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Startups</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Recruiters</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Real Estate</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">E-commerce</a></li>
               </ul>
             </div>
 
