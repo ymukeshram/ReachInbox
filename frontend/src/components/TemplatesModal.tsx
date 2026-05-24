@@ -31,7 +31,7 @@ function TemplatesModal({ onClose, onSelect }: Props) {
   const loadTemplates = async () => {
     try {
       const res = await getTemplates();
-      setTemplates(res.data);
+      setTemplates(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       setError('Failed to load templates');
     } finally {

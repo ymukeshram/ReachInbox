@@ -44,7 +44,7 @@ function ComposeModal({ onClose, onSuccess }: Props) {
 
   // Load sequences for follow-up selection
   useEffect(() => {
-    getSequences().then(r => setSequences(r.data)).catch(() => {});
+    getSequences().then(r => setSequences(Array.isArray(r.data) ? r.data : [])).catch(() => {});
   }, []);
 
   // Debounced spam score check

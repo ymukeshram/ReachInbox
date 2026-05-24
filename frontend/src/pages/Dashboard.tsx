@@ -97,6 +97,21 @@ function Dashboard({ user, setUser }: DashboardProps) {
     if (activeTab !== 'analytics') loadEmails(true);
   }, [activeTab, scheduledPage, sentPage, loadEmails]);
 
+  // When switching to analytics, load up to 500 emails so charts have data
+  useEffect(() => {
+    if (activeTab !== 'analytics') return;
+    Promise.all([
+      getSentEmails(1, 500).then(res => {
+        const d = res.data.data ?? res.data;
+        setSentEmails(Array.isArray(d) ? d : []);
+      }).catch(() => {}),
+      getScheduledEmails(1, 500).then(res => {
+        const d = res.data.data ?? res.data;
+        setScheduledEmails(Array.isArray(d) ? d : []);
+      }).catch(() => {}),
+    ]);
+  }, [activeTab]);
+
   useEffect(() => {
     if (activeTab === 'sent') {
       const t = setTimeout(() => loadEmails(false), 400);
