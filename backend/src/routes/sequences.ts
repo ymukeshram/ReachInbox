@@ -125,15 +125,21 @@ router.post('/:id/enroll', isAuthenticated, async (req: Request, res: Response) 
     const nextCheckAt = new Date(Date.now() + step.delay_days * 24 * 60 * 60 * 1000);
     const enrollId = uuidv4();
 
-    await pool.query(
+    const insertRes = await pool.query(
       `INSERT INTO sequence_enrollments
          (id, sequence_id, user_id, recipient_email, source_email_id, current_step, next_check_at)
        VALUES ($1,$2,$3,$4,$5,0,$6)
-       ON CONFLICT (sequence_id, recipient_email) DO NOTHING`,
+       ON CONFLICT (sequence_id, recipient_email) DO NOTHING
+       RETURNING id`,
       [enrollId, seqId, user.id, recipientEmail.toLowerCase(), sourceEmailId||null, nextCheckAt]
     );
 
-    // Schedule the follow-up check job
+    // ON CONFLICT DO NOTHING means the recipient is already enrolled — return existing state
+    if (insertRes.rowCount === 0) {
+      return res.json({ success: true, alreadyEnrolled: true });
+    }
+
+    // Schedule the follow-up check job for the newly inserted enrollment
     await emailQueue.add(
       'sequence-followup',
       { enrollmentId: enrollId, sequenceId: seqId, userId: user.id },

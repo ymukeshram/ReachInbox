@@ -180,33 +180,23 @@ const userLimiter = rateLimit({
 app.use(globalLimiter);
 app.use('/api', userLimiter);
 
-// Routes
-app.use('/auth', authRoutes);
-app.use('/api/emails', emailRoutes);
-app.use('/api/campaigns', campaignRoutes);
-app.use('/api/smtp', smtpRoutes);
-app.use('/api/sequences', sequenceRoutes);
-app.use('/api/contacts', contactRoutes);
-app.use('/api/payment', paymentRoutes);
-app.use('/track', trackingRoutes);
-
 // Cache middleware for GET requests
 const cacheMiddleware = (duration: number) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (req.method !== 'GET') return next();
-    
+
     const key = `cache:${req.originalUrl}:${(req.user as any)?.id || 'anonymous'}`;
-    
+
     redis.get(key).then(cached => {
       if (cached) {
         res.setHeader('X-Cache', 'HIT');
         return res.json(JSON.parse(cached));
       }
-      
+
       res.setHeader('X-Cache', 'MISS');
       const originalJson = res.json.bind(res);
       res.json = (body: any) => {
-        redis.setex(key, duration, JSON.stringify(body)).catch(err => 
+        redis.setex(key, duration, JSON.stringify(body)).catch(err =>
           logger.warn({ error: err.message }, 'Cache set failed')
         );
         return originalJson(body);
@@ -216,9 +206,19 @@ const cacheMiddleware = (duration: number) => {
   };
 };
 
-// Apply caching to specific routes
-app.use('/api/emails/stats', cacheMiddleware(30)); // 30 seconds
-app.use('/api/emails/templates', cacheMiddleware(60)); // 1 minute
+// Apply caching BEFORE route registrations so it intercepts requests first
+app.use('/api/emails/stats',     cacheMiddleware(30));  // 30 seconds
+app.use('/api/emails/templates', cacheMiddleware(60));  // 1 minute
+
+// Routes
+app.use('/auth', authRoutes);
+app.use('/api/emails', emailRoutes);
+app.use('/api/campaigns', campaignRoutes);
+app.use('/api/smtp', smtpRoutes);
+app.use('/api/sequences', sequenceRoutes);
+app.use('/api/contacts', contactRoutes);
+app.use('/api/payment', paymentRoutes);
+app.use('/track', trackingRoutes);
 
 
 // Health check with detailed info

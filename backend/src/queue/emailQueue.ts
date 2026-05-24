@@ -1,4 +1,5 @@
 import { Queue, Worker, Job } from 'bullmq';
+import { v4 as uuidv4 } from 'uuid';
 import { redis } from '../config/redisWithFallback';
 import { sendEmail, classifyBounce, EmailAttachment } from '../services/emailService';
 import { selectSmtpAccount, incrementSmtpUsage } from '../services/smtpRotation';
@@ -156,7 +157,7 @@ async function processSequenceFollowup(job: Job<SequenceFollowupJobData>): Promi
   }
 
   // Send the follow-up email
-  const followUpEmailId = require('uuid').v4();
+  const followUpEmailId = uuidv4();
   const scheduledAt     = new Date();
 
   await pool.query(
@@ -216,6 +217,13 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
 
     logger.info({ emailId, recipientEmail, userId, attempt: job.attemptsMade+1 }, 'Processing email job');
 
+    // Guard: skip if already sent (can happen on restart race between rescheduled jobs)
+    const statusCheck = await pool.query('SELECT status FROM emails WHERE id=$1', [emailId]);
+    if (!statusCheck.rows[0] || statusCheck.rows[0].status !== 'scheduled') {
+      logger.info({ emailId, status: statusCheck.rows[0]?.status }, 'Email job skipped — already processed');
+      return { skipped: true, reason: 'already_processed' };
+    }
+
     if (await isUnsubscribed(recipientEmail, userId)) {
       await pool.query(
         `UPDATE emails SET status='cancelled', error_message='Recipient unsubscribed', updated_at=NOW() WHERE id=$1`,
@@ -266,7 +274,7 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
           [sequenceId]
         );
         if (firstStep.rows.length > 0) {
-          const enrollId    = require('uuid').v4();
+          const enrollId    = uuidv4();
           const nextCheckAt = new Date(Date.now() + firstStep.rows[0].delay_days * 86400000);
           await pool.query(
             `INSERT INTO sequence_enrollments

@@ -62,6 +62,12 @@ function ComposeModal({ onClose, onSuccess }: Props) {
 
   const processFile = useCallback((f: File) => {
     setCsvFile(f);
+    const isExcel = f.name.endsWith('.xlsx') || f.name.endsWith('.xls');
+    if (isExcel) {
+      // Can't count emails client-side from binary xlsx — show placeholder
+      setEmailCount(0);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = ev => {
       const matches = (ev.target?.result as string).match(EMAIL_REGEX) || [];
@@ -89,8 +95,9 @@ function ComposeModal({ onClose, onSuccess }: Props) {
   const handleDrop      = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setIsDragging(false);
     const f = e.dataTransfer.files?.[0];
-    if (f && (f.name.endsWith('.csv') || f.name.endsWith('.txt'))) processFile(f);
-    else { setError('Please drop a CSV or TXT file'); setTimeout(() => setError(''), 3000); }
+    const ok = f && (f.name.endsWith('.csv') || f.name.endsWith('.txt') || f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
+    if (ok) processFile(f);
+    else { setError('Please drop a CSV, Excel (.xlsx), or TXT file'); setTimeout(() => setError(''), 3000); }
   }, [processFile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -171,7 +178,7 @@ function ComposeModal({ onClose, onSuccess }: Props) {
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Body</label>
             <textarea value={body} onChange={e => setBody(e.target.value)}
               rows={6} className={inp} placeholder="Hi {{first_name}},&#10;&#10;I saw your role at {{company}}..." required />
-            <p className="mt-1 text-xs text-gray-400">Variables auto-filled from CSV columns: {`{{first_name}} {{last_name}} {{company}} {{role}}`}</p>
+            <p className="mt-1 text-xs text-gray-400">Variables auto-filled from CSV/Excel columns: {`{{first_name}} {{last_name}} {{company}} {{role}}`}</p>
           </div>
 
           {/* Campaign + Sequence row */}
@@ -190,14 +197,14 @@ function ComposeModal({ onClose, onSuccess }: Props) {
             </div>
           </div>
 
-          {/* CSV Upload */}
+          {/* File Upload */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Email List (CSV / TXT)</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Email List (CSV / Excel / TXT)</label>
             <div
               onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
               className={`relative border-2 border-dashed rounded-lg p-5 text-center transition-all ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'}`}
             >
-              <input type="file" accept=".csv,.txt" onChange={handleFileChange}
+              <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileChange}
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required={!csvFile} />
               <div className="pointer-events-none">
                 <svg className="w-9 h-9 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,9 +212,14 @@ function ComposeModal({ onClose, onSuccess }: Props) {
                 </svg>
                 {csvFile
                   ? <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{csvFile.name}</p>
-                  : <p className="text-sm text-gray-600 dark:text-gray-400">Drop CSV/TXT or click to browse</p>}
+                  : <p className="text-sm text-gray-600 dark:text-gray-400">Drop CSV, Excel (.xlsx), or TXT — or click to browse</p>}
               </div>
             </div>
+            {csvFile && (csvFile.name.endsWith('.xlsx') || csvFile.name.endsWith('.xls')) && (
+              <p className="mt-1.5 text-sm text-blue-600 dark:text-blue-400 font-medium">
+                Excel file selected — recipient count shown after scheduling
+              </p>
+            )}
             {emailCount > 0 && (
               <p className="mt-1.5 text-sm text-green-600 dark:text-green-400 font-medium">
                 {emailCount.toLocaleString()} unique email{emailCount!==1?'s':''} detected
