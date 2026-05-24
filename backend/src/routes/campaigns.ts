@@ -31,7 +31,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 
     const campaigns = rows.map(r => ({
       ...r,
-      successRate: parseInt(r.sent) > 0
+      success_rate: parseInt(r.sent) > 0
         ? ((parseInt(r.sent) / (parseInt(r.sent) + parseInt(r.failed))) * 100).toFixed(1)
         : '0'
     }));

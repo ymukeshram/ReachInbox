@@ -60,17 +60,20 @@ function Dashboard({ user, setUser }: DashboardProps) {
     try {
       if (activeTab === 'scheduled') {
         const res = await getScheduledEmails(scheduledPage, PAGE_SIZE);
-        setScheduledEmails(res.data.data ?? res.data);
+        const data = res.data.data ?? res.data;
+        setScheduledEmails(Array.isArray(data) ? data : []);
         setScheduledTotal(res.data.total ?? 0);
         setScheduledHasMore(res.data.hasMore ?? false);
       } else if (activeTab === 'sent') {
         const res = await getSentEmails(sentPage, PAGE_SIZE, searchQuery);
-        setSentEmails(res.data.data ?? res.data);
+        const data = res.data.data ?? res.data;
+        setSentEmails(Array.isArray(data) ? data : []);
         setSentTotal(res.data.total ?? 0);
         setSentHasMore(res.data.hasMore ?? false);
       } else if (activeTab === 'campaigns') {
         const res = await getCampaigns();
-        setCampaigns(res.data.campaigns ?? res.data ?? []);
+        const data = res.data.campaigns ?? res.data;
+        setCampaigns(Array.isArray(data) ? data : []);
       }
     } catch (err: any) {
       if (err.response?.status === 401) {

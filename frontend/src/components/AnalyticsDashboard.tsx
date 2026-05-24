@@ -17,18 +17,21 @@ const STATUS_COLORS = {
 };
 
 function AnalyticsDashboard({ scheduledEmails, sentEmails }: Props) {
+  const safeSent      = Array.isArray(sentEmails) ? sentEmails : [];
+  const safeScheduled = Array.isArray(scheduledEmails) ? scheduledEmails : [];
+
   const stats = useMemo(() => {
-    const sent      = sentEmails.filter(e => e.status === 'sent').length;
-    const failed    = sentEmails.filter(e => e.status === 'failed').length;
-    const cancelled = sentEmails.filter(e => e.status === 'cancelled').length;
-    const scheduled = scheduledEmails.length;
+    const sent      = safeSent.filter(e => e.status === 'sent').length;
+    const failed    = safeSent.filter(e => e.status === 'failed').length;
+    const cancelled = safeSent.filter(e => e.status === 'cancelled').length;
+    const scheduled = safeScheduled.length;
     const total     = sent + failed + cancelled + scheduled;
-    const hardBounce = sentEmails.filter(e => e.bounce_type === 'hard').length;
-    const softBounce = sentEmails.filter(e => e.bounce_type === 'soft').length;
+    const hardBounce = safeSent.filter(e => e.bounce_type === 'hard').length;
+    const softBounce = safeSent.filter(e => e.bounce_type === 'soft').length;
     const successRate  = (sent + failed) > 0 ? ((sent / (sent + failed)) * 100).toFixed(1) : '—';
     const bounceRate   = (sent + failed) > 0 ? (((hardBounce + softBounce) / (sent + failed)) * 100).toFixed(1) : '—';
     return { total, sent, failed, cancelled, scheduled, hardBounce, softBounce, successRate, bounceRate };
-  }, [scheduledEmails, sentEmails]);
+  }, [safeScheduled, safeSent]);
 
   const pieData = [
     { name: 'Sent',      value: stats.sent,      color: STATUS_COLORS.sent },
@@ -38,7 +41,7 @@ function AnalyticsDashboard({ scheduledEmails, sentEmails }: Props) {
 
   const dailyData = useMemo(() => {
     const days: Record<string, { sent: number; failed: number }> = {};
-    sentEmails.forEach(email => {
+    safeSent.forEach(email => {
       if (!email.sent_at) return;
       try {
         const date = new Date(email.sent_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
@@ -48,11 +51,11 @@ function AnalyticsDashboard({ scheduledEmails, sentEmails }: Props) {
       } catch {}
     });
     return Object.entries(days).map(([date, d]) => ({ date, ...d })).slice(-14);
-  }, [sentEmails]);
+  }, [safeSent]);
 
   const hourlyData = useMemo(() => {
     const hours: Record<number, number> = {};
-    sentEmails.forEach(email => {
+    safeSent.forEach(email => {
       if (!email.sent_at || email.status !== 'sent') return;
       try {
         const h = new Date(email.sent_at).getHours();
@@ -63,7 +66,7 @@ function AnalyticsDashboard({ scheduledEmails, sentEmails }: Props) {
       hour: `${String(h).padStart(2, '0')}:00`,
       count: hours[h] || 0,
     }));
-  }, [sentEmails]);
+  }, [safeSent]);
 
   return (
     <div className="space-y-5">
