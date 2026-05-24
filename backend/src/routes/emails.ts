@@ -72,11 +72,20 @@ router.post(
         return res.status(400).json({ error: 'Attachment too large (max 5 MB)' });
       }
 
-      // Parse startTime as local time (IST) — treat the values as-is, no UTC conversion
+      // Parse datetime-local value (YYYY-MM-DDTHH:mm) as IST (UTC+5:30).
+      // We use Date.UTC() so the calculation is independent of the server's TZ env var —
+      // Date.UTC treats the values as UTC, then we subtract the IST offset to get real UTC.
+      // e.g. user picks 18:14 IST → store as 12:44 UTC  (18:14 − 5h30m)
       const [datePart, timePart] = startTime.split('T');
-      const [year, month, day] = datePart.split('-').map(Number);
-      const [hour, minute]     = timePart.split(':').map(Number);
-      const startDate = new Date(year, month - 1, day, hour, minute, 0, 0);
+      const [year, month, day]   = datePart.split('-').map(Number);
+      const [hour, minute]       = timePart.split(':').map(Number);
+
+      if ([year, month, day, hour, minute].some(n => isNaN(n))) {
+        return res.status(400).json({ error: 'Invalid start time format' });
+      }
+
+      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+      const startDate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0) - IST_OFFSET_MS);
 
       if (startDate.getTime() < Date.now() - 60_000) {
         return res.status(400).json({ error: 'Start time is too far in the past' });
