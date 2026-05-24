@@ -12,22 +12,25 @@ router.get('/google', passport.authenticate('google', {
 router.get(
   '/google/callback',
   (req: Request, res: Response, next: NextFunction) => {
+    // FRONTEND_URL takes priority; fall back to RENDER_EXTERNAL_URL so OAuth
+    // works when the frontend is served directly from this backend service.
+    const appUrl = process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || '';
     passport.authenticate('google', (err: any, user: any) => {
       if (err) {
         logger.error({ error: err.message }, 'Google OAuth error');
-        return res.redirect(`${process.env.FRONTEND_URL}?error=oauth_failed`);
+        return res.redirect(`${appUrl}?error=oauth_failed`);
       }
       if (!user) {
         logger.warn('Google OAuth: no user returned');
-        return res.redirect(`${process.env.FRONTEND_URL}?error=no_user`);
+        return res.redirect(`${appUrl}?error=no_user`);
       }
       req.logIn(user, (loginErr) => {
         if (loginErr) {
           logger.error({ error: loginErr.message }, 'Session login error');
-          return res.redirect(`${process.env.FRONTEND_URL}?error=session_failed`);
+          return res.redirect(`${appUrl}?error=session_failed`);
         }
         logger.info({ userId: user.id }, 'User logged in successfully');
-        res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+        res.redirect(`${appUrl}/dashboard`);
       });
     })(req, res, next);
   }

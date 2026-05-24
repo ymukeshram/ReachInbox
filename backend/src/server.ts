@@ -26,6 +26,8 @@ import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
 dotenv.config();
 
@@ -68,9 +70,13 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", 'data:', 'https:'],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      scriptSrc:  ["'self'"],
+      imgSrc:     ["'self'", 'data:', 'https:', 'blob:'],
+      connectSrc: ["'self'", 'wss:', 'https:'],
+      fontSrc:    ["'self'", 'data:'],
+      workerSrc:  ["'self'", 'blob:'],
+      manifestSrc:["'self'"],
     }
   },
   crossOriginEmbedderPolicy: false,
@@ -84,8 +90,11 @@ app.use(helmet({
 app.use(compression());
 
 // CORS — built entirely from env vars, no hardcoded URLs
+// RENDER_EXTERNAL_URL is the backend's own URL; include it so same-origin
+// requests work when the frontend is served from this backend.
 const allowedOrigins = [
   process.env.FRONTEND_URL,
+  process.env.RENDER_EXTERNAL_URL,
   ...(process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',').map(o => o.trim()) : []),
 ].filter(Boolean);
 
@@ -135,13 +144,20 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Rate limiting with custom message
-const globalLimiter = rateLimit({ 
-  windowMs: 60_000, 
-  max: 200, 
-  standardHeaders: true, 
+const globalLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 200,
+  standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later' },
-  skip: (req) => req.path === '/health' || req.path === '/metrics'
+  skip: (req) => {
+    const p = req.path;
+    // Health/metrics are exempt, as are static frontend assets
+    if (p === '/health' || p === '/metrics') return true;
+    if (p.startsWith('/assets/')) return true;
+    if (/\.(js|css|png|jpg|jpeg|svg|ico|woff2?|ttf|webp|json|map)$/.test(p)) return true;
+    return false;
+  }
 });
 
 // Per-user rate limiting for authenticated routes
@@ -204,28 +220,6 @@ const cacheMiddleware = (duration: number) => {
 app.use('/api/emails/stats', cacheMiddleware(30)); // 30 seconds
 app.use('/api/emails/templates', cacheMiddleware(60)); // 1 minute
 
-// Root route for health checks
-app.get('/', (_req, res) => {
-  res.json({
-    name: 'Reachify API',
-    version: '1.0.0',
-    status: 'running',
-    timestamp: new Date().toISOString(),
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    config: {
-      minEmailDelay: '10 seconds (updated)',
-      sessionLifetime: '7 days',
-      timezone: 'UTC (converts to IST on frontend)'
-    },
-    endpoints: {
-      health: '/health',
-      metrics: '/metrics',
-      auth: '/auth/*',
-      emails: '/api/emails/*',
-      payment: '/api/payment/*'
-    }
-  });
-});
 
 // Health check with detailed info
 app.get('/health', async (_req, res) => {
@@ -492,8 +486,18 @@ async function start() {
   }
 }
 
-// Error handlers (must be last)
-app.use(notFoundHandler);
+// Serve React frontend for all non-API routes (SPA catch-all)
+// This eliminates dependency on Render Static Site routing config.
+const frontendDist = path.join(__dirname, '../../frontend/dist');
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist, { maxAge: '1h', etag: true, index: false }));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+} else {
+  // Error handlers (fallback when frontend not built)
+  app.use(notFoundHandler);
+}
 app.use(errorHandler);
 
 // Graceful shutdown
