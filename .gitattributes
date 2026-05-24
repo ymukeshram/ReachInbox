@@ -1,0 +1,2 @@
+# Ensure _redirects always uses LF so Render's parser works correctly
+frontend/public/_redirects text eol=lf

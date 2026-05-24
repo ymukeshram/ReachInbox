@@ -1,5 +1,4 @@
 services:
-  # ── Backend ──────────────────────────────────────────────────────────────────
   - type: web
     name: reachify-backend
     runtime: node
@@ -9,11 +8,3 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-
-  # ── Frontend ──────────────────────────────────────────────────────────────────
-  - type: web
-    name: reachify-io
-    runtime: node
-    rootDir: frontend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
