@@ -46,7 +46,12 @@
       "Bash(cat frontend/.gitignore)",
       "Bash(xxd)",
       "Bash(git check-ignore *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(node *)",
+      "Bash(Get-ChildItem -Recurse \"C:\\\\Users\\\\HP\\\\Desktop\\\\Reachify\\\\frontend\\\\src\" -Filter \"*.tsx\")",
+      "Bash(Select-Object FullName)",
+      "Bash(Get-ChildItem *)",
+      "Bash(npm install *)"
     ]
   }
 }

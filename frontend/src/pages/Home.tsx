@@ -197,6 +197,58 @@ function Home() {
         body: 'Hi {{first_name}},\n\nYou left {{product}} in your cart. Here\'s a one-time 10% off to help you decide:\n\nCode: {{discount_code}} · Valid 24 hours\n\n[Complete my order]\n\nQuestions? Reply to this email — we\'re real humans.\n\nTeam [Brand]',
       },
     },
+    {
+      id: 'agencies',
+      label: 'Agencies',
+      icon: '🏛️',
+      color: 'indigo',
+      gradient: 'from-indigo-500 to-violet-600',
+      bg: 'bg-indigo-50 dark:bg-indigo-900/20',
+      border: 'border-indigo-500',
+      text: 'text-indigo-600 dark:text-indigo-400',
+      badge: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
+      headline: 'Run client campaigns at agency scale.',
+      subheadline: 'Manage outreach for 10 clients from one dashboard — no messy spreadsheets.',
+      description: 'Agencies waste hours setting up separate tools for each client. Reachify lets you run personalised email campaigns for multiple clients under one account, with separate SMTP accounts per client, campaign-level analytics, and CSV/Excel imports straight from client CRM exports.',
+      bullets: [
+        'Separate SMTP per client — sender identity stays clean',
+        'Upload client lists in CSV or Excel — no reformatting needed',
+        'Personalise with {{client_name}}, {{company}}, {{campaign}}',
+        'Campaign-level reporting to share with clients every week',
+        'White-label email templates per client brand voice',
+      ],
+      stat: { value: '5×', label: 'more campaigns managed per account manager' },
+      example: {
+        subject: '{{first_name}}, a quick note from {{client_name}}',
+        body: 'Hi {{first_name}},\n\nI\'m reaching out on behalf of {{client_name}} — we\'ve been helping {{industry}} companies like yours with {{solution}}.\n\nWould a 20-min intro call make sense this week?\n\nBest,\n{{sender_name}}\n[{{client_name}}]',
+      },
+    },
+    {
+      id: 'campus',
+      label: 'Campus Placement',
+      icon: '🎓',
+      color: 'yellow',
+      gradient: 'from-yellow-500 to-orange-500',
+      bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+      border: 'border-yellow-500',
+      text: 'text-yellow-700 dark:text-yellow-400',
+      badge: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300',
+      headline: 'Get every student placed.',
+      subheadline: 'Automate company outreach so your placement cell can focus on prep, not email.',
+      description: 'Placement cells at colleges spend weeks manually emailing companies for JD approvals, PPT slots, and offer letters. Reachify lets you upload your target company list from Excel, personalise every outreach, and automatically follow up — so no opportunity slips through the cracks.',
+      bullets: [
+        'Import target company list from Excel directly — no CSV conversion',
+        'Personalise with {{company}}, {{hr_name}}, {{batch_year}}, {{branch}}',
+        'Automated follow-up if HR doesn\'t respond in 5 days',
+        'Track which companies opened the JD request or PPT invite',
+        'Separate campaigns for Day 1 companies vs. mass recruiters',
+      ],
+      stat: { value: '60%', label: 'faster company onboarding for placement season' },
+      example: {
+        subject: 'Campus Recruitment 2025 — {{company}} × [College Name]',
+        body: 'Dear {{hr_name}},\n\nI\'m from the Placement Cell at [College Name]. We\'d love to invite {{company}} to recruit from our {{batch_year}} batch — {{student_count}} students across {{branch}}.\n\nOur students have placed at [Top Co 1], [Top Co 2] in previous years.\n\nWould you be open to a brief call to discuss the process?\n\nWarm regards,\nPlacement Coordinator\n[College Name]',
+      },
+    },
   ];
 
   useEffect(() => {
@@ -238,7 +290,7 @@ function Home() {
         </svg>
       ),
       title: 'Contact Management',
-      description: 'Import contacts from CSV, tag and segment them, auto-suppress unsubscribes and hard bounces so your list stays clean and your sender score stays high.',
+      description: 'Import contacts from CSV or Excel, tag and segment them, auto-suppress unsubscribes and hard bounces so your list stays clean and your sender score stays high.',
       color: 'from-green-500 to-emerald-500',
       bg: 'bg-green-50 dark:bg-green-900/20',
       text: 'text-green-600 dark:text-green-400',
@@ -291,18 +343,33 @@ function Home() {
   const steps = [
     {
       num: '01',
-      title: 'Upload Your List',
-      desc: 'Import a CSV or TXT file with email addresses. Add columns like name, company, role — Reachify auto-fills them into your email template.',
+      title: 'Upload',
+      desc: 'Import your audience from a CSV or Excel file. Columns like first_name, company, role are auto-detected and ready for personalisation.',
     },
     {
       num: '02',
-      title: 'Compose & Schedule',
-      desc: 'Write your email, set a start time, configure sending rate and hourly limits. Our spam checker flags issues before you hit send.',
+      title: 'Personalize',
+      desc: 'Write your email and insert dynamic tokens — {{first_name}}, {{company}}, {{role}}. Every recipient gets a unique, human-feeling message.',
     },
     {
       num: '03',
-      title: 'Track & Optimise',
-      desc: 'Monitor deliveries, opens, and bounces in real-time. Hard bounces and unsubscribes are auto-suppressed to keep your sender reputation clean.',
+      title: 'Launch',
+      desc: 'Set your start time, sending rate, and hourly cap. Our spam checker flags issues before you hit send — inbox, not junk.',
+    },
+    {
+      num: '04',
+      title: 'Reach',
+      desc: 'Emails go out on schedule via your SMTP accounts with automatic rotation to maximise deliverability and stay within sending limits.',
+    },
+    {
+      num: '05',
+      title: 'Automate',
+      desc: 'Build multi-step follow-up sequences. If a contact doesn\'t reply in N days, the next email goes out automatically — no manual chasing.',
+    },
+    {
+      num: '06',
+      title: 'Monitor',
+      desc: 'Track opens, clicks, bounces, and campaign delivery in real-time. Hard bounces and unsubscribes are auto-suppressed to protect your sender reputation.',
     },
   ];
 
@@ -353,7 +420,7 @@ function Home() {
     },
     {
       q: 'How does personalisation work?',
-      a: 'Include columns like first_name, last_name, company, role in your CSV. Then use {{first_name}}, {{company}} etc. in your subject or body — Reachify replaces them for each recipient automatically.',
+      a: 'Include columns like first_name, last_name, company, role in your CSV or Excel file. Then use {{first_name}}, {{company}} etc. in your subject or body — Reachify replaces them for each recipient automatically.',
     },
   ];
 
@@ -425,7 +492,7 @@ function Home() {
           </h1>
 
           <p className={`text-xl text-gray-600 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-            Schedule thousands of personalised emails, track opens and clicks in real-time, and manage bounces automatically — all in one clean dashboard.
+            Built for recruiters, enterprises, startups, agencies, EdTech platforms, and e-commerce businesses. Upload your audience via CSV or Excel, personalise every email, automate follow-ups, and monitor results — all in one dashboard.
           </p>
 
           <div className={`flex flex-col sm:flex-row items-center justify-center gap-4 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
@@ -498,21 +565,16 @@ function Home() {
               Up and running in under 5 minutes
             </h2>
             <p className="text-lg text-gray-600 dark:text-gray-400 max-w-xl mx-auto">
-              No complex setup, no developer required. Sign in with Google and schedule your first campaign in minutes.
+              No complex setup, no developer required. Upload CSV or Excel, write your email, and launch your first campaign in under 5 minutes.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {steps.map((step, i) => (
-              <div key={i} className="relative">
-                {i < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-full w-full h-px bg-gradient-to-r from-blue-200 to-transparent dark:from-blue-800 -translate-x-4" />
-                )}
-                <div className="bg-white dark:bg-gray-800 rounded-2xl p-7 border border-gray-100 dark:border-gray-700 h-full">
-                  <span className="text-4xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{step.num}</span>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 mb-2">{step.title}</h3>
-                  <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{step.desc}</p>
-                </div>
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-7 border border-gray-100 dark:border-gray-700 h-full flex flex-col">
+                <span className="text-4xl font-black bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">{step.num}</span>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-3 mb-2">{step.title}</h3>
+                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{step.desc}</p>
               </div>
             ))}
           </div>
@@ -663,7 +725,7 @@ function Home() {
                 features: [
                   '1,000 emails / month',
                   'Basic analytics dashboard',
-                  'CSV upload & personalisation',
+                  'CSV & Excel upload & personalisation',
                   'Bounce & unsubscribe tracking',
                   '1 SMTP account',
                   'Email support',
@@ -890,6 +952,8 @@ function Home() {
                 <li><a href="#use-cases" className="hover:text-white transition">Recruiters</a></li>
                 <li><a href="#use-cases" className="hover:text-white transition">Real Estate</a></li>
                 <li><a href="#use-cases" className="hover:text-white transition">E-commerce</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Agencies</a></li>
+                <li><a href="#use-cases" className="hover:text-white transition">Campus Placement</a></li>
               </ul>
             </div>
 

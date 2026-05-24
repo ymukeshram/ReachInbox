@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import { pool } from '../config/database';
 import { isAuthenticated } from '../middleware/auth';
-import { parseCSVWithHeaders } from '../services/emailPersonalization';
+import { parseSpreadsheet } from '../services/emailPersonalization';
 import { logger } from '../utils/logger';
 
 const router   = Router();
@@ -100,8 +100,7 @@ router.post('/import', isAuthenticated, upload.single('file'), async (req: Reque
     const user = req.user as any;
     if (!req.file) return res.status(400).json({ error: 'CSV file is required' });
 
-    const content  = req.file.buffer.toString('utf-8');
-    const { emails, data } = parseCSVWithHeaders(content);
+    const { emails, data } = parseSpreadsheet(req.file.buffer, req.file.mimetype, req.file.originalname);
 
     if (emails.length === 0) return res.status(400).json({ error: 'No valid emails in CSV' });
 

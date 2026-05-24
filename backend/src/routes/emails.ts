@@ -5,7 +5,7 @@ import { pool } from '../config/database';
 import { emailQueue } from '../queue/emailQueue';
 import { isAuthenticated } from '../middleware/auth';
 import { validateScheduleEmail, handleValidationErrors, sanitizeHtml } from '../utils/validation';
-import { parseCSVWithHeaders, personalizeEmail } from '../services/emailPersonalization';
+import { parseSpreadsheet, personalizeEmail } from '../services/emailPersonalization';
 import { calculateSpamScore } from '../utils/spamScore';
 import { logger } from '../utils/logger';
 import { checkEmailLimit, requirePermission } from '../middleware/rbac';
@@ -85,8 +85,9 @@ router.post(
       const delayMs = Math.max(1000, parseInt(delayBetweenEmails || '5') * 1000);
       const limit   = Math.min(parseInt(hourlyLimit || '200'), MAX_EMAILS_PER_HOUR);
 
-      const fileContent = csvFile.buffer.toString('utf-8');
-      const { emails, data, skipped, invalidEmails } = parseCSVWithHeaders(fileContent);
+      const { emails, data, skipped, invalidEmails } = parseSpreadsheet(
+        csvFile.buffer, csvFile.mimetype, csvFile.originalname
+      );
 
       if (emails.length === 0) {
         return res.status(400).json({

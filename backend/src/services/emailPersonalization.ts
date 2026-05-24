@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx';
+
 export interface EmailData {
   [key: string]: string;
 }
@@ -105,6 +107,52 @@ export function parseCSVWithHeaders(content: string): ParseResult {
       emails.push(email);
       data.push({ email });
     }
+  }
+
+  return { emails, data, skipped, invalidEmails };
+}
+
+// Parses CSV or Excel buffer — auto-detects format from extension/mimetype
+export function parseSpreadsheet(buffer: Buffer, mimetype: string, filename: string): ParseResult {
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  const isExcel =
+    ext === 'xlsx' || ext === 'xls' ||
+    mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mimetype === 'application/vnd.ms-excel';
+
+  if (!isExcel) {
+    return parseCSVWithHeaders(buffer.toString('utf-8'));
+  }
+
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  const sheet    = workbook.Sheets[workbook.SheetNames[0]];
+  const rows     = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+
+  const emails: string[] = [];
+  const data: EmailData[] = [];
+  const seen = new Set<string>();
+  const invalidEmails: string[] = [];
+  let skipped = 0;
+
+  if (rows.length === 0) return { emails, data, skipped, invalidEmails };
+
+  for (const row of rows) {
+    const emailKey = Object.keys(row).find(k => {
+      const lower = k.toLowerCase();
+      return lower === 'email' || lower === 'e-mail' || lower === 'mail' || lower.includes('email');
+    });
+    if (!emailKey) continue;
+
+    const email = String(row[emailKey]).toLowerCase().trim();
+    if (!email)              continue;
+    if (!isValidEmail(email)){ invalidEmails.push(email); continue; }
+    if (seen.has(email))     { skipped++;                 continue; }
+
+    seen.add(email);
+    const normalized: EmailData = {};
+    Object.keys(row).forEach(k => { normalized[k.toLowerCase()] = String(row[k]).trim(); });
+    data.push(normalized);
+    emails.push(email);
   }
 
   return { emails, data, skipped, invalidEmails };
