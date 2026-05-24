@@ -93,6 +93,10 @@ router.post('/verify-payment', isAuthenticated, async (req: Request, res: Respon
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
     const user = req.user as any;
 
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'Missing payment verification fields' });
+    }
+
     // Verify signature
     const body = razorpay_order_id + '|' + razorpay_payment_id;
     const expectedSignature = crypto
@@ -184,7 +188,7 @@ router.get('/subscription', isAuthenticated, async (req: Request, res: Response)
     }
 
     const subscription = result.rows[0];
-    const planDetails = PLANS[subscription.plan as keyof typeof PLANS];
+    const planDetails = PLANS[subscription.plan as keyof typeof PLANS] || PLANS.starter;
 
     res.json({
       ...subscription,

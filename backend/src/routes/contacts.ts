@@ -12,16 +12,21 @@ const upload   = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5
 // ─── Tags ─────────────────────────────────────────────────────────────────────
 
 router.get('/tags', isAuthenticated, async (req: Request, res: Response) => {
-  const user = req.user as any;
-  const { rows } = await pool.query(
-    `SELECT t.*, COUNT(ct.contact_id) AS contact_count
-     FROM tags t
-     LEFT JOIN contact_tags ct ON ct.tag_id = t.id
-     WHERE t.user_id=$1
-     GROUP BY t.id ORDER BY t.name ASC`,
-    [user.id]
-  );
-  res.json(rows);
+  try {
+    const user = req.user as any;
+    const { rows } = await pool.query(
+      `SELECT t.*, COUNT(ct.contact_id) AS contact_count
+       FROM tags t
+       LEFT JOIN contact_tags ct ON ct.tag_id = t.id
+       WHERE t.user_id=$1
+       GROUP BY t.id ORDER BY t.name ASC`,
+      [user.id]
+    );
+    res.json(rows);
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to fetch tags');
+    res.status(500).json({ error: 'Failed to fetch tags' });
+  }
 });
 
 router.post('/tags', isAuthenticated, async (req: Request, res: Response) => {
@@ -74,7 +79,7 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
 
     const countQuery   = `SELECT COUNT(DISTINCT c.id) FROM contacts c
                           LEFT JOIN contact_tags ct ON ct.contact_id=c.id
-                          WHERE c.user_id=$1${tagId?` AND ct.tag_id=$2`:''}${search?` AND (c.email ILIKE $${tagId?3:2})`:''}`;
+                          WHERE c.user_id=$1${tagId?` AND ct.tag_id=$2`:''}${search?` AND (c.email ILIKE $${tagId?3:2} OR c.first_name ILIKE $${tagId?3:2} OR c.last_name ILIKE $${tagId?3:2})`:''}`;
     const countParams  = [user.id, ...(tagId?[tagId]:[]), ...(search?[`%${search}%`]:[])];
 
     const [dataRes, countRes] = await Promise.all([
@@ -118,7 +123,7 @@ router.post('/import', isAuthenticated, upload.single('file'), async (req: Reque
            ON CONFLICT (user_id, email) DO UPDATE
              SET first_name = COALESCE(NULLIF(EXCLUDED.first_name,''), contacts.first_name),
                  last_name  = COALESCE(NULLIF(EXCLUDED.last_name,''),  contacts.last_name),
-                 custom_fields = contacts.custom_fields || EXCLUDED.custom_fields,
+                 custom_fields = COALESCE(contacts.custom_fields, '{}'::jsonb) || EXCLUDED.custom_fields,
                  updated_at = NOW()
            RETURNING id`,
           [uuidv4(), user.id, email,
@@ -137,7 +142,10 @@ router.post('/import', isAuthenticated, upload.single('file'), async (req: Reque
         }
 
         imported++;
-      } catch { skipped++; }
+      } catch (err: any) {
+        logger.warn({ email, error: err.message }, 'Contact import row skipped');
+        skipped++;
+      }
     }
 
     logger.info({ userId: user.id, imported, skipped }, 'Contacts imported');
@@ -201,9 +209,14 @@ router.get('/export', isAuthenticated, async (req: Request, res: Response) => {
 
 // Delete a contact
 router.delete('/:id', isAuthenticated, async (req: Request, res: Response) => {
-  const user = req.user as any;
-  await pool.query('DELETE FROM contacts WHERE id=$1 AND user_id=$2', [req.params.id, user.id]);
-  res.json({ success: true });
+  try {
+    const user = req.user as any;
+    await pool.query('DELETE FROM contacts WHERE id=$1 AND user_id=$2', [req.params.id, user.id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to delete contact');
+    res.status(500).json({ error: 'Failed to delete contact' });
+  }
 });
 
 export default router;

@@ -11,6 +11,9 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
+// Guard: only redirect once even if multiple concurrent requests all get 401
+let isRedirectingToHome = false;
+
 api.interceptors.request.use(
   (config: AxiosRequestConfigWithMetadata) => {
     config.metadata = { startTime: new Date() };
@@ -27,7 +30,8 @@ api.interceptors.response.use(
     return response;
   },
   (err: AxiosError) => {
-    if (err.response?.status === 401 && window.location.pathname !== '/') {
+    if (err.response?.status === 401 && window.location.pathname !== '/' && !isRedirectingToHome) {
+      isRedirectingToHome = true;
       window.location.href = '/';
     }
     console.error('API Error:', { url: err.config?.url, status: err.response?.status, message: err.message });

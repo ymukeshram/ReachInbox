@@ -502,6 +502,10 @@ router.get('/export', isAuthenticated, async (req: Request, res: Response) => {
     const allowed = ['sent', 'failed', 'scheduled', 'cancelled'];
     if (!allowed.includes(status)) return res.status(400).json({ error: 'Invalid status filter' });
 
+    // Validate date params — reject anything that isn't a valid ISO date string
+    if (from && isNaN(Date.parse(from))) return res.status(400).json({ error: 'Invalid from date' });
+    if (to   && isNaN(Date.parse(to)))   return res.status(400).json({ error: 'Invalid to date' });
+
     let query = `SELECT recipient_email, subject, status, bounce_type, sent_at, created_at, error_message
                  FROM emails WHERE user_id = $1 AND status = $2`;
     const params: any[] = [user.id, status];
