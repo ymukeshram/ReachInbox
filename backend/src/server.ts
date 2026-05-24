@@ -24,10 +24,8 @@ import contactRoutes from './routes/contacts';
 import { emailQueue, emailWorker } from './queue/emailQueue';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
-import { errorHandler } from './middleware/errorHandler';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
 
 dotenv.config();
 
@@ -486,27 +484,7 @@ async function start() {
   }
 }
 
-// Serve React frontend for all non-API routes (SPA catch-all).
-// This eliminates any dependency on Render Static Site routing config —
-// every route that isn't an API route returns index.html so React Router
-// handles it. Static assets (JS/CSS/images) are cached; index.html is not.
-const frontendDist = path.join(__dirname, '../../frontend/dist');
-if (fs.existsSync(frontendDist)) {
-  // Static assets have content-hash filenames → safe to cache
-  app.use(express.static(frontendDist, { maxAge: '7d', etag: true, index: false }));
-
-  // SPA catch-all — never cache index.html so new deploys are always picked up
-  app.get('*', (_req, res) => {
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.sendFile(path.join(frontendDist, 'index.html'));
-  });
-} else {
-  // Frontend not built yet — show a clear error instead of a generic 404
-  app.get('*', (_req, res) => {
-    res.status(503).send('Frontend build not found. Deployment may be in progress.');
-  });
-}
+app.use(notFoundHandler);
 app.use(errorHandler);
 
 // Graceful shutdown
