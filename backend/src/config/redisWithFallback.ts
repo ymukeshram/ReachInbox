@@ -53,10 +53,24 @@ class MemoryStore {
 
   async del(...keys: string[]): Promise<number> {
     let deleted = 0;
-    for (const key of keys) {
+    for (const key of keys.flat()) {
       if (this.store.delete(key)) deleted++;
     }
     return deleted;
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    return Promise.all(keys.map(k => this.get(k)));
+  }
+
+  // Minimal ioredis-compatible SCAN: returns all matching keys in one page
+  // (fine for the small in-memory store used only when Redis is unreachable).
+  async scan(_cursor: string, ...args: any[]): Promise<[string, string[]]> {
+    const matchIdx = args.findIndex(a => a === 'MATCH');
+    const pattern = matchIdx !== -1 ? args[matchIdx + 1] : '*';
+    const regex = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+    const keys = [...this.store.keys()].filter(k => regex.test(k));
+    return ['0', keys];
   }
 
   async incr(key: string): Promise<number> {
@@ -82,17 +96,6 @@ class MemoryStore {
 
   async ping(): Promise<string> {
     return 'PONG';
-  }
-
-  async multi() {
-    return {
-      incr: (key: string) => this,
-      expire: (key: string, seconds: number) => this,
-      exec: async () => {
-        // Simplified multi execution
-        return [[null, 1], [null, 1]];
-      }
-    };
   }
 
   async quit(): Promise<string> {
@@ -121,7 +124,6 @@ class RedisWithFallback {
   private redis: Redis | null = null;
   private fallback: MemoryStore = new MemoryStore();
   private useRedis: boolean = true;
-  private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 3;
 
   constructor() {
@@ -160,7 +162,6 @@ class RedisWithFallback {
       this.redis.on('connect', () => {
         logger.info('Redis connected');
         this.useRedis = true;
-        this.reconnectAttempts = 0;
       });
 
       this.redis.on('ready', () => {
@@ -217,9 +218,23 @@ class RedisWithFallback {
 
   async del(...keys: string[]): Promise<number> {
     return this.executeWithFallback(
-      () => this.redis!.del(...keys),
+      () => this.redis!.del(...keys.flat()),
       () => this.fallback.del(...keys)
     );
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    return this.executeWithFallback(
+      () => this.redis!.mget(...keys),
+      () => this.fallback.mget(keys)
+    );
+  }
+
+  scan(cursor: string, ...args: any[]): Promise<[string, string[]]> {
+    if (this.useRedis && this.redis) {
+      return (this.redis as any).scan(cursor, ...args);
+    }
+    return this.fallback.scan(cursor, ...args);
   }
 
   async incr(key: string): Promise<number> {
@@ -248,13 +263,6 @@ class RedisWithFallback {
       () => this.redis!.ping(),
       () => this.fallback.ping()
     );
-  }
-
-  multi() {
-    if (this.useRedis && this.redis) {
-      return this.redis.multi();
-    }
-    return this.fallback.multi();
   }
 
   async quit(): Promise<string> {
@@ -297,4 +305,3 @@ class RedisWithFallback {
 }
 
 export const redis = new RedisWithFallback();
-export default redis;

@@ -4,26 +4,31 @@ import ComposeModal from '../components/ComposeModal';
 import EmailPreviewModal from '../components/EmailPreviewModal';
 import AnalyticsDashboard from '../components/AnalyticsDashboard';
 import TemplatesModal from '../components/TemplatesModal';
+import ContactsView from '../components/ContactsView';
+import SequencesView from '../components/SequencesView';
+import SettingsView from '../components/SettingsView';
+import { Skeleton, SkeletonTableRows } from '../components/Skeleton';
 import { ErrorBoundary } from '../utils/errorBoundary';
+import { friendlyError } from '../utils/friendlyError';
 import {
   getScheduledEmails, getSentEmails, bulkCancelEmails, getUser, getExportUrl,
-  getCampaigns, cancelCampaign,
+  getCampaigns, cancelCampaign, getSubscription, getPermissions,
 } from '../api';
 import { User, ScheduledEmail, SentEmail, Campaign } from '../types';
 import { useWebSocket } from '../hooks/useWebSocket';
-import axios from 'axios';
 
 interface DashboardProps {
   user: User;
   setUser: (user: User | null) => void;
 }
 
-type Tab = 'scheduled' | 'sent' | 'campaigns' | 'analytics';
+type Tab = 'scheduled' | 'sent' | 'campaigns' | 'analytics' | 'contacts' | 'sequences' | 'settings';
 
 function Dashboard({ user, setUser }: DashboardProps) {
   const [activeTab, setActiveTab]             = useState<Tab>('scheduled');
   const [showCompose, setShowCompose]         = useState(false);
   const [showTemplates, setShowTemplates]     = useState(false);
+  const [templateToApply, setTemplateToApply] = useState<{ subject: string; body: string } | null>(null);
   const [previewEmail, setPreviewEmail]       = useState<ScheduledEmail | SentEmail | null>(null);
   const [scheduledEmails, setScheduledEmails] = useState<ScheduledEmail[]>([]);
   const [sentEmails, setSentEmails]           = useState<SentEmail[]>([]);
@@ -122,10 +127,9 @@ function Dashboard({ user, setUser }: DashboardProps) {
   useEffect(() => {
     const load = async () => {
       try {
-        const API_URL = import.meta.env.VITE_API_URL || '';
         const [subRes, permRes] = await Promise.allSettled([
-          axios.get(`${API_URL}/api/payment/subscription`, { withCredentials: true }),
-          axios.get(`${API_URL}/api/emails/permissions`, { withCredentials: true }),
+          getSubscription(),
+          getPermissions(),
         ]);
         if (subRes.status === 'fulfilled') setSubscription(subRes.value.data);
         if (permRes.status === 'fulfilled') setPermissions(permRes.value.data);
@@ -166,9 +170,8 @@ function Dashboard({ user, setUser }: DashboardProps) {
       setSelectedEmails(new Set());
       await loadEmails(false);
     } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || 'Failed to cancel emails';
-      setError(msg);
-      if (msg.includes('scheduled')) await loadEmails(false);
+      setError(friendlyError(err, "Couldn't cancel those emails. Please try again."));
+      if (err.response?.data?.error === 'No scheduled emails to cancel') await loadEmails(false);
     } finally {
       setBulkActionLoading(false);
     }
@@ -190,7 +193,7 @@ function Dashboard({ user, setUser }: DashboardProps) {
       await cancelCampaign(id);
       await loadEmails(false);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to cancel campaign');
+      setError(friendlyError(err, "Couldn't cancel this campaign. Please try again."));
     }
   };
 
@@ -206,7 +209,13 @@ function Dashboard({ user, setUser }: DashboardProps) {
     { id: 'sent', label: 'Sent', count: sentTotal || undefined },
     { id: 'campaigns', label: 'Campaigns' },
     { id: 'analytics', label: 'Analytics' },
+    { id: 'contacts', label: 'Contacts' },
+    { id: 'sequences', label: 'Sequences' },
+    { id: 'settings', label: 'Settings' },
   ];
+
+  const isEmailTab = activeTab === 'scheduled' || activeTab === 'sent';
+  const showComposeTools = activeTab !== 'contacts' && activeTab !== 'sequences' && activeTab !== 'settings';
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 transition-colors">
@@ -215,9 +224,29 @@ function Dashboard({ user, setUser }: DashboardProps) {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
 
         {/* Quota / Subscription Banner */}
-        {permissions && (
+        {!permissions ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
-            <div className="flex flex-wrap items-center gap-6">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              <div className="flex items-center gap-3 min-w-fit">
+                <Skeleton className="w-10 h-10 rounded-xl" />
+                <div>
+                  <Skeleton className="h-2.5 w-10 mb-2" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+              </div>
+              <div className="flex-1 min-w-44">
+                <Skeleton className="h-3 w-28 mb-2" />
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+              <div className="flex-1 min-w-36">
+                <Skeleton className="h-3 w-20 mb-2" />
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 shadow-sm">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
 
               {/* Plan badge */}
               <div className="flex items-center gap-3 min-w-fit">
@@ -280,12 +309,12 @@ function Dashboard({ user, setUser }: DashboardProps) {
 
         {/* Tabs + Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex gap-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-1 shadow-sm">
+          <div className="flex gap-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-1 shadow-sm overflow-x-auto max-w-full">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); setSelectedEmails(new Set()); setSearchQuery(''); }}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0 transition-all ${
                   activeTab === tab.id
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'
@@ -305,15 +334,15 @@ function Dashboard({ user, setUser }: DashboardProps) {
             ))}
           </div>
 
-          <div className="flex items-center gap-2">
-            {(activeTab === 'scheduled' || activeTab === 'sent') && (
-              <div className="relative">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {isEmailTab && (
+              <div className="relative w-full sm:w-auto order-first">
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder="Search emails..."
-                  className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm w-52 shadow-sm"
+                  className="pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-sm w-full sm:w-52 shadow-sm"
                 />
                 <svg className="w-4 h-4 absolute left-3 top-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -321,7 +350,7 @@ function Dashboard({ user, setUser }: DashboardProps) {
               </div>
             )}
 
-            {(activeTab === 'scheduled' || activeTab === 'sent') && (
+            {isEmailTab && (
               <button
                 onClick={handleExport}
                 className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
@@ -334,25 +363,29 @@ function Dashboard({ user, setUser }: DashboardProps) {
               </button>
             )}
 
-            <button
-              onClick={() => setShowTemplates(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Templates
-            </button>
+            {showComposeTools && (
+              <button
+                onClick={() => setShowTemplates(true)}
+                className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Templates
+              </button>
+            )}
 
-            <button
-              onClick={() => setShowCompose(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-sm hover:shadow-md"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Compose
-            </button>
+            {showComposeTools && (
+              <button
+                onClick={() => setShowCompose(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition shadow-sm hover:shadow-md"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Compose
+              </button>
+            )}
           </div>
         </div>
 
@@ -389,12 +422,43 @@ function Dashboard({ user, setUser }: DashboardProps) {
             loading={loading}
             onCancel={handleCancelCampaign}
           />
+        ) : activeTab === 'contacts' ? (
+          <ErrorBoundary>
+            <ContactsView />
+          </ErrorBoundary>
+        ) : activeTab === 'sequences' ? (
+          <ErrorBoundary>
+            <SequencesView />
+          </ErrorBoundary>
+        ) : activeTab === 'settings' ? (
+          <ErrorBoundary>
+            <SettingsView permissions={permissions} />
+          </ErrorBoundary>
         ) : (
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
             {loading ? (
-              <div className="p-16 flex flex-col items-center gap-3 text-gray-400">
-                <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading...</span>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px]">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+                      {(activeTab === 'scheduled'
+                        ? ['', 'Recipient', 'Subject', 'Scheduled At', 'Status', '']
+                        : ['Recipient', 'Subject', 'Sent At', 'Status', 'Bounce']
+                      ).map((h, i) => (
+                        <th key={i} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <SkeletonTableRows
+                      rows={8}
+                      columns={activeTab === 'scheduled'
+                        ? ['w-40', 'w-52', 'w-28', 'w-16', 'w-10']
+                        : ['w-40', 'w-52', 'w-28', 'w-16', 'w-16']}
+                      withCheckbox={activeTab === 'scheduled'}
+                    />
+                  </tbody>
+                </table>
               </div>
             ) : activeTab === 'scheduled' ? (
               filteredScheduledEmails.length === 0 ? (
@@ -487,7 +551,7 @@ function Dashboard({ user, setUser }: DashboardProps) {
                             <td className="px-5 py-4">
                               {email.bounce_type ? (
                                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${email.bounce_type === 'hard' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>
-                                  {email.bounce_type}
+                                  {email.bounce_type === 'hard' ? 'Permanently undeliverable' : 'Temporarily undeliverable'}
                                 </span>
                               ) : <span className="text-gray-300 dark:text-gray-600">—</span>}
                             </td>
@@ -508,8 +572,23 @@ function Dashboard({ user, setUser }: DashboardProps) {
         )}
       </div>
 
-      {showCompose   && <ComposeModal onClose={() => setShowCompose(false)} onSuccess={() => loadEmails(true)} />}
-      {showTemplates && <TemplatesModal onClose={() => setShowTemplates(false)} />}
+      {showCompose   && (
+        <ComposeModal
+          onClose={() => { setShowCompose(false); setTemplateToApply(null); }}
+          onSuccess={() => loadEmails(true)}
+          initialTemplate={templateToApply}
+        />
+      )}
+      {showTemplates && (
+        <TemplatesModal
+          onClose={() => setShowTemplates(false)}
+          onSelect={(template) => {
+            setTemplateToApply({ subject: template.subject, body: template.body });
+            setShowTemplates(false);
+            setShowCompose(true);
+          }}
+        />
+      )}
       {previewEmail  && <EmailPreviewModal email={previewEmail} onClose={() => setPreviewEmail(null)} />}
     </div>
   );
@@ -524,9 +603,21 @@ function CampaignsView({ campaigns, loading, onCancel }: {
 }) {
   if (loading) {
     return (
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-16 flex flex-col items-center gap-3 text-gray-400 shadow-sm">
-        <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        <span className="text-sm">Loading campaigns...</span>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px]">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-100 dark:border-gray-800">
+                {['Campaign', 'Status', 'Emails', 'Sent', 'Failed', 'Success Rate', 'Created', ''].map(h => (
+                  <th key={h} className="px-5 py-3.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <SkeletonTableRows rows={6} columns={['w-32', 'w-16', 'w-10', 'w-10', 'w-10', 'w-20', 'w-20', 'w-8']} />
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
@@ -565,8 +656,7 @@ function CampaignsView({ campaigns, loading, onCancel }: {
             {campaigns.map(c => (
               <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                 <td className="px-5 py-4">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{c.name || `Campaign #${c.id.slice(0,6)}`}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">ID: {c.id.slice(0, 8)}…</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{c.name || 'Untitled campaign'}</p>
                 </td>
                 <td className="px-5 py-4">
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColor[c.status] || 'bg-gray-100 text-gray-600'}`}>

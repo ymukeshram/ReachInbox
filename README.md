@@ -891,7 +891,7 @@ Reachify solves the critical challenge of **scalable email campaign management**
 
 This is a portfolio project built for demonstration purposes. For questions or collaboration:
 
-**Developer**: Sumant Kumar  
+**Developer**: Sumant  
 **GitHub**: [@Sumant3086](https://github.com/Sumant3086)  
 **Project**: [Reachify - Email Campaign Platform](https://github.com/Sumant3086/Reachify)  
 **Live Demo**: [https://reachify-s5fw.onrender.com](https://reachify-s5fw.onrender.com)

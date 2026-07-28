@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getTemplates, saveTemplate, deleteTemplate } from '../api';
+import { friendlyError } from '../utils/friendlyError';
+import { Skeleton } from './Skeleton';
 
 interface Template {
   id: string;
@@ -52,7 +54,7 @@ function TemplatesModal({ onClose, onSelect }: Props) {
       setSubject('');
       setBody('');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to save template');
+      setError(friendlyError(err, "Couldn't save this template. Please try again."));
     } finally {
       setSaving(false);
     }
@@ -129,7 +131,7 @@ function TemplatesModal({ onClose, onSelect }: Props) {
                   onChange={e => setBody(e.target.value)}
                   rows={6}
                   className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Email body (supports {{variable}} syntax)"
+                  placeholder="Email body (supports personalisation fields like {{first_name}})"
                   required
                 />
               </div>
@@ -144,8 +146,21 @@ function TemplatesModal({ onClose, onSelect }: Props) {
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <div className="grid md:grid-cols-2 gap-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-4"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <Skeleton className="h-4 w-28" style={{ animationDelay: `${i * 60}ms` }} />
+                    <Skeleton className="h-4 w-8" style={{ animationDelay: `${i * 60 + 20}ms` }} />
+                  </div>
+                  <Skeleton className="h-3 w-full mb-2" style={{ animationDelay: `${i * 60 + 40}ms` }} />
+                  <Skeleton className="h-3 w-4/5 mb-2" style={{ animationDelay: `${i * 60 + 60}ms` }} />
+                  <Skeleton className="h-2.5 w-20 mt-3" style={{ animationDelay: `${i * 60 + 80}ms` }} />
+                </div>
+              ))}
             </div>
           ) : templates.length === 0 ? (
             <div className="text-center py-12">

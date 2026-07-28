@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { scheduleEmails, checkSpamScore, getSequences } from '../api';
+import { friendlyError } from '../utils/friendlyError';
 
-interface Props { onClose: () => void; onSuccess: () => void; }
+interface Props { onClose: () => void; onSuccess: () => void; initialTemplate?: { subject: string; body: string } | null; }
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const ALLOWED_ATTACHMENTS = [
@@ -23,9 +24,9 @@ function SpamBadge({ rating }: { rating: 'safe' | 'caution' | 'risky' }) {
   );
 }
 
-function ComposeModal({ onClose, onSuccess }: Props) {
-  const [subject, setSubject]             = useState('');
-  const [body, setBody]                   = useState('');
+function ComposeModal({ onClose, onSuccess, initialTemplate }: Props) {
+  const [subject, setSubject]             = useState(initialTemplate?.subject ?? '');
+  const [body, setBody]                   = useState(initialTemplate?.body ?? '');
   const [csvFile, setCsvFile]             = useState<File | null>(null);
   const [attachmentFile, setAttachment]   = useState<File | null>(null);
   const [emailCount, setEmailCount]       = useState(0);
@@ -123,7 +124,7 @@ function ComposeModal({ onClose, onSuccess }: Props) {
       onSuccess();
       setTimeout(onClose, 4000);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to schedule. Please try again.');
+      setError(friendlyError(err, "Couldn't schedule this email. Please try again."));
     } finally {
       setTimeout(() => setLoading(false), 1000);
     }
@@ -178,11 +179,11 @@ function ComposeModal({ onClose, onSuccess }: Props) {
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Body</label>
             <textarea value={body} onChange={e => setBody(e.target.value)}
               rows={6} className={inp} placeholder="Hi {{first_name}},&#10;&#10;I saw your role at {{company}}..." required />
-            <p className="mt-1 text-xs text-gray-400">Variables auto-filled from CSV/Excel columns: {`{{first_name}} {{last_name}} {{company}} {{role}}`}</p>
+            <p className="mt-1 text-xs text-gray-400">Personalisation fields auto-filled from your CSV/Excel columns: {`{{first_name}} {{last_name}} {{company}} {{role}}`}</p>
           </div>
 
           {/* Campaign + Sequence row */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Campaign Name <span className="text-gray-400 font-normal text-xs">(optional)</span></label>
               <input type="text" value={campaignName} onChange={e => setCampaignName(e.target.value)}
@@ -235,10 +236,10 @@ function ComposeModal({ onClose, onSuccess }: Props) {
             <div className="flex items-center gap-3">
               <label className="flex-1 cursor-pointer">
                 <div className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${attachmentFile ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                   </svg>
-                  {attachmentFile ? attachmentFile.name : 'Attach file (e.g. resume.pdf)'}
+                  <span className="truncate">{attachmentFile ? attachmentFile.name : 'Attach file (e.g. resume.pdf)'}</span>
                 </div>
                 <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={handleAttachmentChange} className="hidden" />
               </label>
@@ -250,8 +251,8 @@ function ComposeModal({ onClose, onSuccess }: Props) {
           </div>
 
           {/* Schedule settings */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Start Time</label>
               <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} className={inp} required />
             </div>

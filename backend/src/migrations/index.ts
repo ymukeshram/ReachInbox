@@ -300,6 +300,30 @@ const migrations: Migration[] = [
       await pool.query('DROP TABLE IF EXISTS tags CASCADE');
       await pool.query('DROP TABLE IF EXISTS smtp_accounts CASCADE');
     }
+  },
+  {
+    version: 6,
+    name: 'add_subscription_trial_flag',
+    up: async (pool: Pool) => {
+      await pool.query(`
+        ALTER TABLE subscriptions
+        ADD COLUMN IF NOT EXISTS is_trial BOOLEAN DEFAULT false
+      `);
+    },
+    down: async (pool: Pool) => {
+      await pool.query(`ALTER TABLE subscriptions DROP COLUMN IF EXISTS is_trial`);
+    }
+  },
+  {
+    version: 7,
+    name: 'remove_smtp_accounts',
+    up: async (pool: Pool) => {
+      // Custom SMTP rotation has been replaced by a single Brevo API integration
+      await pool.query('DROP TABLE IF EXISTS smtp_accounts CASCADE');
+    },
+    down: async () => {
+      // Irreversible — the custom-SMTP feature has been removed from the app
+    }
   }
 ];
 
@@ -329,20 +353,6 @@ export async function runMigrations(pool: Pool): Promise<void> {
       } catch (error: any) {
         logger.error({ error: error.message, version: migration.version }, 'Migration failed');
         throw error;
-      }
-    }
-  }
-}
-
-export async function rollbackMigration(pool: Pool, targetVersion: number): Promise<void> {
-  const result = await pool.query('SELECT version FROM schema_migrations ORDER BY version DESC');
-  for (const { version } of result.rows) {
-    if (version > targetVersion) {
-      const migration = migrations.find(m => m.version === version);
-      if (migration) {
-        logger.info({ version, name: migration.name }, 'Rolling back migration');
-        await migration.down(pool);
-        await pool.query('DELETE FROM schema_migrations WHERE version = $1', [version]);
       }
     }
   }

@@ -8,7 +8,9 @@ import { validateScheduleEmail, handleValidationErrors, sanitizeHtml } from '../
 import { parseSpreadsheet, personalizeEmail } from '../services/emailPersonalization';
 import { calculateSpamScore } from '../utils/spamScore';
 import { logger } from '../utils/logger';
-import { checkEmailLimit, requirePermission } from '../middleware/rbac';
+import { checkEmailLimit, requirePermission, ROLE_PERMISSIONS, getUserRole } from '../middleware/rbac';
+import { getPagination } from '../utils/pagination';
+import { toCsv } from '../utils/csv';
 
 const MAX_EMAILS_PER_HOUR  = parseInt(process.env.MAX_EMAILS_PER_HOUR || '200');
 const MAX_FILE_SIZE         = 10 * 1024 * 1024; // 10 MB (covers CSV + attachment)
@@ -91,8 +93,12 @@ router.post(
         return res.status(400).json({ error: 'Start time is too far in the past' });
       }
 
+      const userRole      = (req as any).userRole;
+      const rolePermissions = ROLE_PERMISSIONS[userRole as keyof typeof ROLE_PERMISSIONS];
+      const roleHourlyCap = rolePermissions.maxEmailsPerHour === -1 ? MAX_EMAILS_PER_HOUR : rolePermissions.maxEmailsPerHour;
+
       const delayMs = Math.max(1000, parseInt(delayBetweenEmails || '5') * 1000);
-      const limit   = Math.min(parseInt(hourlyLimit || '200'), MAX_EMAILS_PER_HOUR);
+      const limit   = Math.min(parseInt(hourlyLimit || '200'), MAX_EMAILS_PER_HOUR, roleHourlyCap);
 
       const { emails, data, skipped, invalidEmails } = parseSpreadsheet(
         csvFile.buffer, csvFile.mimetype, csvFile.originalname
@@ -180,6 +186,33 @@ router.post(
           filtered: filteredOut,
           skipped
         });
+      }
+
+      // checkEmailLimit already confirmed the user's usage-so-far is under their
+      // monthly cap, but it ran before the CSV was parsed and has no idea how many
+      // emails this batch actually contains. Re-check with the batch size included
+      // so a single large upload can't blow straight through the monthly quota.
+      if (rolePermissions.maxEmailsPerMonth !== -1) {
+        const monthStart = new Date();
+        monthStart.setDate(1);
+        monthStart.setHours(0, 0, 0, 0);
+
+        const { rows } = await pool.query(
+          `SELECT COUNT(*) as count FROM emails
+           WHERE user_id = $1 AND created_at >= $2 AND status IN ('sent', 'scheduled')`,
+          [user.id, monthStart]
+        );
+        const usedThisMonth = parseInt(rows[0].count);
+
+        if (usedThisMonth + jobsToQueue.length > rolePermissions.maxEmailsPerMonth) {
+          return res.status(403).json({
+            error: 'This batch would exceed your monthly email limit',
+            limit: rolePermissions.maxEmailsPerMonth,
+            used: usedThisMonth,
+            remaining: Math.max(0, rolePermissions.maxEmailsPerMonth - usedThisMonth),
+            message: 'Upgrade your plan to send more emails'
+          });
+        }
       }
 
       // Store attachment once per campaign (not once per email)
@@ -270,9 +303,7 @@ router.post(
 router.get('/scheduled', isAuthenticated, async (req, res) => {
   try {
     const user   = req.user as any;
-    const page   = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit  = Math.min(100, parseInt(req.query.limit as string) || PAGE_SIZE);
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = getPagination(req, PAGE_SIZE);
 
     const [dataRes, countRes] = await Promise.all([
       pool.query(
@@ -305,14 +336,19 @@ router.get('/scheduled', isAuthenticated, async (req, res) => {
 router.get('/sent', isAuthenticated, async (req, res) => {
   try {
     const user   = req.user as any;
-    const page   = Math.max(1, parseInt(req.query.page as string) || 1);
-    const limit  = Math.min(100, parseInt(req.query.limit as string) || PAGE_SIZE);
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = getPagination(req, PAGE_SIZE);
     const search = (req.query.search as string || '').trim();
 
-    const searchClause = search ? `AND (recipient_email ILIKE $4 OR subject ILIKE $4)` : '';
     const params: any[] = [user.id, limit, offset];
-    if (search) params.push(`%${search}%`);
+    const countParams: any[] = [user.id];
+    let searchClause = '';
+    let countSearchClause = '';
+    if (search) {
+      params.push(`%${search}%`);
+      countParams.push(`%${search}%`);
+      searchClause = `AND (recipient_email ILIKE $4 OR subject ILIKE $4)`;
+      countSearchClause = `AND (recipient_email ILIKE $2 OR subject ILIKE $2)`;
+    }
 
     const [dataRes, countRes] = await Promise.all([
       pool.query(
@@ -324,8 +360,8 @@ router.get('/sent', isAuthenticated, async (req, res) => {
       ),
       pool.query(
         `SELECT COUNT(*) FROM emails WHERE user_id = $1 AND status IN ('sent','failed','cancelled')
-         ${searchClause}`,
-        search ? [user.id, `%${search}%`] : [user.id]
+         ${countSearchClause}`,
+        countParams
       )
     ]);
 
@@ -381,7 +417,7 @@ router.post('/bulk-cancel', isAuthenticated, async (req: Request, res: Response)
       return res.status(400).json({ error: 'Maximum 100 emails per bulk-cancel' });
 
     const result = await pool.query(
-      `SELECT id, status FROM emails WHERE id = ANY($1::uuid[]) AND user_id = $2`,
+      `SELECT id, status FROM emails WHERE id = ANY($1) AND user_id = $2`,
       [emailIds, user.id]
     );
 
@@ -402,7 +438,7 @@ router.post('/bulk-cancel', isAuthenticated, async (req: Request, res: Response)
     );
 
     await pool.query(
-      `UPDATE emails SET status='cancelled', updated_at=NOW() WHERE id = ANY($1::uuid[])`,
+      `UPDATE emails SET status='cancelled', updated_at=NOW() WHERE id = ANY($1)`,
       [validIds]
     );
 
@@ -438,7 +474,11 @@ router.post('/retry-failed', isAuthenticated, requirePermission('canBulkSend'), 
       return res.status(400).json({ error: 'All selected emails are hard bounces and cannot be retried' });
     }
 
-    const limit = parseInt(process.env.MAX_EMAILS_PER_HOUR || '200');
+    const userRole = (req as any).userRole;
+    const rolePermissions = ROLE_PERMISSIONS[userRole as keyof typeof ROLE_PERMISSIONS];
+    const limit = rolePermissions.maxEmailsPerHour === -1
+      ? MAX_EMAILS_PER_HOUR
+      : rolePermissions.maxEmailsPerHour;
 
     await Promise.all(
       retryable.map(async row => {
@@ -526,15 +566,15 @@ router.get('/export', isAuthenticated, async (req: Request, res: Response) => {
     query += ' ORDER BY created_at DESC LIMIT 10000';
     const { rows } = await pool.query(query, params);
 
-    const header = 'recipient_email,subject,status,bounce_type,sent_at,created_at,error_message\n';
-    const csvRows = rows.map(r =>
-      [r.recipient_email, `"${(r.subject || '').replace(/"/g, '""')}"`, r.status, r.bounce_type || '',
-       r.sent_at || '', r.created_at || '', `"${(r.error_message || '').replace(/"/g, '""')}"`].join(',')
+    const csv = toCsv(
+      ['recipient_email', 'subject', 'status', 'bounce_type', 'sent_at', 'created_at', 'error_message'],
+      rows.map(r => [r.recipient_email, r.subject || '', r.status, r.bounce_type || '',
+                      r.sent_at || '', r.created_at || '', r.error_message || ''])
     );
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="reachify-${status}-${Date.now()}.csv"`);
-    res.send(header + csvRows.join('\n'));
+    res.send(csv);
   } catch (err: any) {
     logger.error({ error: err.message }, 'Export failed');
     return res.status(500).json({ error: 'Export failed' });
@@ -597,7 +637,6 @@ router.delete('/templates/:id', isAuthenticated, async (req, res) => {
 router.get('/permissions', isAuthenticated, async (req: Request, res: Response) => {
   try {
     const user = req.user as any;
-    const { getUserRole, ROLE_PERMISSIONS } = await import('../middleware/rbac');
     const userRole    = await getUserRole(user.id, pool);
     const permissions = ROLE_PERMISSIONS[userRole];
 

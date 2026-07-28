@@ -50,11 +50,3 @@ export interface Campaign {
   created_at: string;
   updated_at: string;
 }
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  hasMore: boolean;
-}

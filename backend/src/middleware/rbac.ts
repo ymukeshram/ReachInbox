@@ -1,5 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
+import { pool } from '../config/database';
+
+// Grace period after a subscription's end_date during which access is still
+// granted, to absorb payment/webhook delays before downgrading the user.
+export const GRACE_PERIOD_DAYS = 3;
 
 // User roles
 export enum Role {
@@ -87,7 +92,10 @@ export function hasPermission(role: Role, permission: string): boolean {
 export async function getUserRole(userId: string, pool: any): Promise<Role> {
   try {
     const result = await pool.query(
-      'SELECT plan FROM subscriptions WHERE user_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 1',
+      `SELECT plan FROM subscriptions
+       WHERE user_id = $1 AND status = $2
+         AND (end_date IS NULL OR end_date > NOW() - INTERVAL '${GRACE_PERIOD_DAYS} days')
+       ORDER BY created_at DESC LIMIT 1`,
       [userId, 'active']
     );
 
@@ -102,43 +110,6 @@ export async function getUserRole(userId: string, pool: any): Promise<Role> {
   }
 }
 
-// Middleware to check if user has required role
-export function requireRole(...allowedRoles: Role[]) {
-  return async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (!req.isAuthenticated || !req.isAuthenticated()) {
-        return res.status(401).json({ error: 'Authentication required' });
-      }
-
-      const user = req.user as any;
-      const { pool } = await import('../config/database');
-      const userRole = await getUserRole(user.id, pool);
-
-      if (!allowedRoles.includes(userRole)) {
-        logger.warn({ 
-          userId: user.id, 
-          userRole, 
-          requiredRoles: allowedRoles 
-        }, 'Access denied - insufficient permissions');
-
-        return res.status(403).json({ 
-          error: 'Access denied',
-          message: `This feature requires ${allowedRoles.join(' or ')} plan`,
-          currentPlan: userRole,
-          upgradeUrl: '/pricing'
-        });
-      }
-
-      // Attach role to request for later use
-      (req as any).userRole = userRole;
-      next();
-    } catch (err: any) {
-      logger.error({ error: err.message }, 'RBAC middleware error');
-      res.status(500).json({ error: 'Authorization check failed' });
-    }
-  };
-}
-
 // Middleware to check specific permission
 export function requirePermission(permission: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -148,7 +119,6 @@ export function requirePermission(permission: string) {
       }
 
       const user = req.user as any;
-      const { pool } = await import('../config/database');
       const userRole = await getUserRole(user.id, pool);
 
       if (!hasPermission(userRole, permission)) {
@@ -161,8 +131,7 @@ export function requirePermission(permission: string) {
         return res.status(403).json({ 
           error: 'Access denied',
           message: `This feature is not available in your current plan`,
-          currentPlan: userRole,
-          upgradeUrl: '/pricing'
+          currentPlan: userRole
         });
       }
 
@@ -183,7 +152,6 @@ export async function checkEmailLimit(req: Request, res: Response, next: NextFun
     }
 
     const user = req.user as any;
-    const { pool } = await import('../config/database');
     const userRole = await getUserRole(user.id, pool);
     const permissions = ROLE_PERMISSIONS[userRole];
 
@@ -206,8 +174,7 @@ export async function checkEmailLimit(req: Request, res: Response, next: NextFun
           error: 'Monthly email limit reached',
           limit: permissions.maxEmailsPerMonth,
           used: emailsSentThisMonth,
-          message: 'Upgrade your plan to send more emails',
-          upgradeUrl: '/pricing'
+          message: 'Upgrade your plan to send more emails'
         });
       }
     }

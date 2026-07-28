@@ -2,9 +2,10 @@ import { Queue, Worker, Job } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { redis } from '../config/redisWithFallback';
 import { sendEmail, classifyBounce, EmailAttachment } from '../services/emailService';
-import { selectSmtpAccount, incrementSmtpUsage } from '../services/smtpRotation';
+import { sendWebhook } from '../services/webhookService';
 import { pool } from '../config/database';
 import { logger } from '../utils/logger';
+import { getUserRole, ROLE_PERMISSIONS } from '../middleware/rbac';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -31,7 +32,7 @@ export interface SequenceFollowupJobData {
 }
 
 export const emailQueue = new Queue('email-queue', {
-  connection: (redis as any).getRedisInstance?.() ?? (redis as any),
+  connection: redis.getRedisInstance() ?? (redis as any),
   defaultJobOptions: {
     attempts: 3,
     backoff: { type: 'exponential', delay: 5000 },
@@ -156,6 +157,35 @@ async function processSequenceFollowup(job: Job<SequenceFollowupJobData>): Promi
     return { skipped: true, reason: 'unsubscribed' };
   }
 
+  // Sequence follow-ups are their own send path and must respect the same plan
+  // quota as manual sends — otherwise a sequence is an unmetered way to send email.
+  const role        = await getUserRole(userId, pool);
+  const permissions = ROLE_PERMISSIONS[role];
+
+  if (permissions.maxEmailsPerMonth !== -1) {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) as count FROM emails WHERE user_id=$1 AND created_at >= $2 AND status IN ('sent','scheduled')`,
+      [userId, monthStart]
+    );
+    if (parseInt(rows[0].count) >= permissions.maxEmailsPerMonth) {
+      const retryAt = new Date(Date.now() + 60 * 60 * 1000);
+      await pool.query(
+        'UPDATE sequence_enrollments SET next_check_at=$1, updated_at=NOW() WHERE id=$2',
+        [retryAt, enrollmentId]
+      );
+      await emailQueue.add('sequence-followup',
+        { enrollmentId, sequenceId, userId },
+        { delay: retryAt.getTime() - Date.now(), jobId: `seq:${enrollmentId}:${nextStep}:retry-${Date.now()}` }
+      );
+      return { rescheduled: true, reason: 'monthly_limit_reached' };
+    }
+  }
+
+  const hourlyLimit = permissions.maxEmailsPerHour === -1 ? MAX_EMAILS_PER_HOUR : permissions.maxEmailsPerHour;
+
   // Send the follow-up email
   const followUpEmailId = uuidv4();
   const scheduledAt     = new Date();
@@ -168,7 +198,7 @@ async function processSequenceFollowup(job: Job<SequenceFollowupJobData>): Promi
 
   await emailQueue.add('send-email', {
     emailId: followUpEmailId, recipientEmail: enroll.recipient_email,
-    subject: step.subject, body: step.body, userId, hourlyLimit: MAX_EMAILS_PER_HOUR,
+    subject: step.subject, body: step.body, userId, hourlyLimit,
     sequenceId
   }, { delay: 0, jobId: followUpEmailId });
 
@@ -247,25 +277,28 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
       return { rescheduled: true };
     }
 
-    // Try user's custom SMTP first, fall back to system SMTP
-    const customSmtp  = await selectSmtpAccount(userId, pool).catch(() => null);
-    const attachment  = attachmentId ? await loadAttachment(attachmentId) : undefined;
+    const attachment = attachmentId ? await loadAttachment(attachmentId) : undefined;
 
     try {
       await sendEmail(recipientEmail, subject, body, {
         emailId,
-        backendUrl:  BACKEND_URL,
-        transporter: customSmtp?.transporter,
-        fromAddress: customSmtp?.fromAddress,
+        backendUrl: BACKEND_URL,
         attachment
       });
-
-      if (customSmtp) await incrementSmtpUsage(customSmtp.accountId!, pool).catch(() => {});
 
       await pool.query(
         `UPDATE emails SET status='sent', sent_at=NOW(), updated_at=NOW() WHERE id=$1`,
         [emailId]
       );
+
+      sendWebhook({
+        event: 'email.sent',
+        emailId,
+        recipientEmail,
+        status: 'sent',
+        timestamp: new Date().toISOString(),
+        userId
+      }).catch(() => {});
 
       // Enroll in sequence follow-up if this is a campaign email
       if (sequenceId) {
@@ -302,22 +335,32 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
 
       if (bounceType === 'hard') {
         await recordHardBounce(recipientEmail, userId, errorMessage);
+        sendWebhook({
+          event: 'email.failed', emailId, recipientEmail, status: 'failed',
+          timestamp: new Date().toISOString(), userId, error: errorMessage
+        }).catch(() => {});
         return { failed: true, bounceType: 'hard' }; // no retry
       }
 
       logger.error({ emailId, recipientEmail, error: errorMessage, attempt: job.attemptsMade+1 }, 'Email failed');
+
+      const maxAttempts = job.opts.attempts ?? 3;
+      if (job.attemptsMade + 1 >= maxAttempts) {
+        sendWebhook({
+          event: 'email.failed', emailId, recipientEmail, status: 'failed',
+          timestamp: new Date().toISOString(), userId, error: errorMessage
+        }).catch(() => {});
+      }
+
       throw new Error(errorMessage);
     }
   },
   {
-    connection: (redis as any).getRedisInstance?.() ?? (redis as any),
+    connection: redis.getRedisInstance() ?? (redis as any),
     concurrency: WORKER_CONCURRENCY,
     limiter: { max: 10, duration: 1000 },
     stalledInterval: 30_000,
-    maxStalledCount: 2,
-    settings: {
-      backoffStrategy: (n: number) => Math.min(5000 * Math.pow(2, n), 20000)
-    }
+    maxStalledCount: 2
   }
 );
 

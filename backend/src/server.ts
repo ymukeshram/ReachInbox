@@ -18,13 +18,14 @@ import emailRoutes from './routes/emails';
 import paymentRoutes from './routes/payment';
 import trackingRoutes from './routes/tracking';
 import campaignRoutes from './routes/campaigns';
-import smtpRoutes from './routes/smtp';
 import sequenceRoutes from './routes/sequences';
 import contactRoutes from './routes/contacts';
 import { emailQueue, emailWorker } from './queue/emailQueue';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
+import { getMetrics } from './utils/metrics';
+import { runMigrations } from './migrations';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -119,13 +120,21 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
+// Razorpay webhook signature verification needs the exact raw request bytes,
+// so this route gets its own parser (mounted before the global JSON parser)
+// that stashes the raw buffer alongside the parsed body.
+app.use('/api/payment/webhook', express.json({
+  limit: '1mb',
+  verify: (req, _res, buf) => { (req as express.Request).rawBody = buf; }
+}));
+
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Redis-backed session store with proper configuration
 app.use(session({
   store: new RedisStore({ client: redis }),
-  secret: process.env.SESSION_SECRET || 'secret',
+  secret: process.env.SESSION_SECRET!, // validateEnv() guarantees this is always set
   resave: false,
   saveUninitialized: false,
   rolling: true, // Reset expiry on every request
@@ -166,7 +175,7 @@ const userLimiter = rateLimit({
   max: 100, // 100 requests per minute per user
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req, res) => {
+  keyGenerator: (req) => {
     // Use user ID if authenticated, otherwise don't use IP at all
     if (req.isAuthenticated && req.isAuthenticated()) {
       return `user:${(req.user as any).id}`;
@@ -214,7 +223,6 @@ app.use('/api/emails/templates', cacheMiddleware(60));  // 1 minute
 app.use('/auth', authRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/campaigns', campaignRoutes);
-app.use('/api/smtp', smtpRoutes);
 app.use('/api/sequences', sequenceRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/payment', paymentRoutes);
@@ -280,7 +288,6 @@ app.get('/metrics', async (_req, res) => {
     };
     
     try {
-      const { getMetrics } = await import('./utils/metrics');
       appMetrics = await getMetrics();
     } catch {}
     
@@ -440,19 +447,11 @@ async function cleanupOldEmails() {
 
 async function start() {
   try {
-    // Perform startup checks
-    const { performStartupChecks } = await import('./utils/startupCheck');
-    const checksPass = await performStartupChecks();
-    if (!checksPass) {
-      process.exit(1);
-    }
-    
     await initDatabase();
     logger.info('Database initialized');
     
     // Run migrations
     try {
-      const { runMigrations } = await import('./migrations');
       await runMigrations(pool);
       logger.info('Database migrations completed');
     } catch (err: any) {
@@ -481,7 +480,6 @@ async function start() {
     });
   } catch (err: any) {
     logger.error({ error: err?.message || String(err), stack: err?.stack }, 'Failed to start server');
-    console.error('Startup error:', err);
     process.exit(1);
   }
 }

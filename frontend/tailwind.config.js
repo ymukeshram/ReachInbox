@@ -18,6 +18,21 @@ export default {
           900: '#1e3a8a',
         },
       },
+      keyframes: {
+        shimmer: {
+          '0%':   { backgroundPosition: '150% 0' },
+          '100%': { backgroundPosition: '-150% 0' },
+        },
+        'progress-sweep': {
+          '0%':   { transform: 'translateX(-100%) scaleX(0.4)' },
+          '50%':  { transform: 'translateX(40%) scaleX(0.6)' },
+          '100%': { transform: 'translateX(150%) scaleX(0.4)' },
+        },
+      },
+      animation: {
+        shimmer: 'shimmer 1.8s ease-in-out infinite',
+        'progress-sweep': 'progress-sweep 1.15s ease-in-out infinite',
+      },
     }
   },
   plugins: []

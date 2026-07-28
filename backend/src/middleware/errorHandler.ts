@@ -33,37 +33,3 @@ export function errorHandler(
   });
 }
 
-export function notFoundHandler(req: Request, res: Response) {
-  logger.warn({ url: req.url, method: req.method }, 'Route not found');
-  res.status(404).json({ error: 'Route not found' });
-}
-
-export class ValidationError extends Error {
-  statusCode = 400;
-  isOperational = true;
-
-  constructor(message: string) {
-    super(message);
-    this.name = 'ValidationError';
-  }
-}
-
-export class AuthenticationError extends Error {
-  statusCode = 401;
-  isOperational = true;
-
-  constructor(message: string = 'Authentication required') {
-    super(message);
-    this.name = 'AuthenticationError';
-  }
-}
-
-export class NotFoundError extends Error {
-  statusCode = 404;
-  isOperational = true;
-
-  constructor(message: string = 'Resource not found') {
-    super(message);
-    this.name = 'NotFoundError';
-  }
-}

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { friendlyError } from '../utils/friendlyError';
 
 interface Props {
   plan: 'professional' | 'enterprise';
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (message?: string) => void;
 }
 
 declare global {
@@ -22,15 +23,36 @@ const PLAN_DETAILS = {
   enterprise: {
     name: 'Enterprise',
     price: 14999,
-    features: ['Unlimited emails', 'Real-time analytics', '24/7 support', 'Unlimited users']
+    features: ['Unlimited emails', 'Unlimited users', 'Dedicated account manager', '24/7 priority support']
   }
 };
 
 function PaymentModal({ plan, onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
+  const [trialLoading, setTrialLoading] = useState(false);
   const [error, setError] = useState('');
 
   const planDetails = PLAN_DETAILS[plan];
+
+  const handleStartTrial = async () => {
+    setTrialLoading(true);
+    setError('');
+
+    try {
+      const API_URL = import.meta.env.VITE_API_URL || '';
+      const res = await axios.post(
+        `${API_URL}/api/payment/start-trial`,
+        { plan },
+        { withCredentials: true }
+      );
+
+      onSuccess(res.data.message || 'Your free trial has started!');
+      onClose();
+    } catch (err: any) {
+      setError(friendlyError(err, "Couldn't start your trial. Please try again."));
+      setTrialLoading(false);
+    }
+  };
 
   const handlePayment = async () => {
     setLoading(true);
@@ -79,10 +101,10 @@ function PaymentModal({ plan, onClose, onSuccess }: Props) {
               { withCredentials: true }
             );
 
-            onSuccess();
+            onSuccess('Payment successful! Your subscription is now active.');
             onClose();
           } catch (err: any) {
-            setError(err.response?.data?.error || 'Payment verification failed');
+            setError(friendlyError(err, "We couldn't confirm your payment. If money was deducted, it will be refunded automatically — please try again in a few minutes."));
             setLoading(false);
           }
         },
@@ -104,7 +126,7 @@ function PaymentModal({ plan, onClose, onSuccess }: Props) {
       const razorpay = new window.Razorpay(options);
       razorpay.open();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to initiate payment');
+      setError(friendlyError(err, "Couldn't start the payment. Please try again."));
       setLoading(false);
     }
   };
@@ -152,19 +174,34 @@ function PaymentModal({ plan, onClose, onSuccess }: Props) {
 
             <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4 mb-6">
               <p className="text-sm text-blue-800 dark:text-blue-200">
-                <strong>14-day free trial</strong> • Cancel anytime • Secure payment via Razorpay
+                <strong>Try free for 14 days</strong> • No card required • Cancel anytime
               </p>
             </div>
           </div>
 
           <button
-            onClick={handlePayment}
-            disabled={loading}
+            onClick={handleStartTrial}
+            disabled={loading || trialLoading}
             className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 rounded-xl font-semibold hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {trialLoading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Starting your trial...
+              </>
+            ) : (
+              'Start 14-day free trial'
+            )}
+          </button>
+
+          <button
+            onClick={handlePayment}
+            disabled={loading || trialLoading}
+            className="w-full mt-3 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white px-6 py-4 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-gray-500 border-t-transparent rounded-full animate-spin" />
                 Processing...
               </>
             ) : (
@@ -172,13 +209,16 @@ function PaymentModal({ plan, onClose, onSuccess }: Props) {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                 </svg>
-                Proceed to Payment
+                Pay ₹{planDetails.price}/month instead
               </>
             )}
           </button>
 
           <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-4">
-            By proceeding, you agree to our Terms of Service and Privacy Policy
+            By proceeding, you agree to our{' '}
+            <a href="/terms-of-service" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Terms of Service</a>{' '}
+            and{' '}
+            <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">Privacy Policy</a>. Payments secured by Razorpay.
           </p>
         </div>
       </div>

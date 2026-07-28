@@ -5,6 +5,8 @@ import { pool } from '../config/database';
 import { isAuthenticated } from '../middleware/auth';
 import { parseSpreadsheet } from '../services/emailPersonalization';
 import { logger } from '../utils/logger';
+import { getPagination } from '../utils/pagination';
+import { toCsv } from '../utils/csv';
 
 const router   = Router();
 const upload   = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5*1024*1024 } });
@@ -43,14 +45,20 @@ router.post('/tags', isAuthenticated, async (req: Request, res: Response) => {
     );
     return res.json({ success: true, id });
   } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to create tag');
     res.status(500).json({ error: 'Failed to create tag' });
   }
 });
 
 router.delete('/tags/:id', isAuthenticated, async (req: Request, res: Response) => {
-  const user = req.user as any;
-  await pool.query('DELETE FROM tags WHERE id=$1 AND user_id=$2', [req.params.id, user.id]);
-  res.json({ success: true });
+  try {
+    const user = req.user as any;
+    await pool.query('DELETE FROM tags WHERE id=$1 AND user_id=$2', [req.params.id, user.id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to delete tag');
+    res.status(500).json({ error: 'Failed to delete tag' });
+  }
 });
 
 // ─── Contacts ─────────────────────────────────────────────────────────────────
@@ -58,33 +66,35 @@ router.delete('/tags/:id', isAuthenticated, async (req: Request, res: Response) 
 router.get('/', isAuthenticated, async (req: Request, res: Response) => {
   try {
     const user   = req.user as any;
-    const page   = Math.max(1, parseInt(req.query.page as string)||1);
-    const limit  = Math.min(100, parseInt(req.query.limit as string)||50);
+    const { page, limit } = getPagination(req);
     const tagId  = req.query.tag as string;
     const search = (req.query.search as string)||'';
 
-    let query   = `SELECT c.*, COALESCE(json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color))
+    // Build the WHERE filters once and reuse them for both the data and count queries
+    const filters: string[] = [];
+    const params: any[] = [user.id];
+
+    if (tagId)  { params.push(tagId); filters.push(`ct.tag_id=$${params.length}`); }
+    if (search) { params.push(`%${search}%`); filters.push(`(c.email ILIKE $${params.length} OR c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length})`); }
+
+    const whereClause = filters.map(f => ` AND ${f}`).join('');
+
+    const dataQuery = `SELECT c.*, COALESCE(json_agg(json_build_object('id',t.id,'name',t.name,'color',t.color))
                      FILTER (WHERE t.id IS NOT NULL),'[]') AS tags
                    FROM contacts c
                    LEFT JOIN contact_tags ct ON ct.contact_id = c.id
                    LEFT JOIN tags t ON t.id = ct.tag_id
-                   WHERE c.user_id=$1`;
-    const params: any[] = [user.id];
+                   WHERE c.user_id=$1${whereClause}
+                   GROUP BY c.id ORDER BY c.created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
+    const dataParams = [...params, limit, (page-1)*limit];
 
-    if (tagId)  { params.push(tagId);            query += ` AND ct.tag_id=$${params.length}`; }
-    if (search) { params.push(`%${search}%`);    query += ` AND (c.email ILIKE $${params.length} OR c.first_name ILIKE $${params.length} OR c.last_name ILIKE $${params.length})`; }
-
-    query += ` GROUP BY c.id ORDER BY c.created_at DESC LIMIT $${params.length+1} OFFSET $${params.length+2}`;
-    params.push(limit, (page-1)*limit);
-
-    const countQuery   = `SELECT COUNT(DISTINCT c.id) FROM contacts c
+    const countQuery = `SELECT COUNT(DISTINCT c.id) FROM contacts c
                           LEFT JOIN contact_tags ct ON ct.contact_id=c.id
-                          WHERE c.user_id=$1${tagId?` AND ct.tag_id=$2`:''}${search?` AND (c.email ILIKE $${tagId?3:2} OR c.first_name ILIKE $${tagId?3:2} OR c.last_name ILIKE $${tagId?3:2})`:''}`;
-    const countParams  = [user.id, ...(tagId?[tagId]:[]), ...(search?[`%${search}%`]:[])];
+                          WHERE c.user_id=$1${whereClause}`;
 
     const [dataRes, countRes] = await Promise.all([
-      pool.query(query, params),
-      pool.query(countQuery, countParams)
+      pool.query(dataQuery, dataParams),
+      pool.query(countQuery, params)
     ]);
 
     res.json({ data: dataRes.rows, total: parseInt(countRes.rows[0].count), page, limit });
@@ -177,6 +187,7 @@ router.post('/tag', isAuthenticated, async (req: Request, res: Response) => {
 
     return res.json({ success: true });
   } catch (err: any) {
+    logger.error({ error: err.message }, 'Tag operation failed');
     res.status(500).json({ error: 'Tag operation failed' });
   }
 });
@@ -187,21 +198,22 @@ router.get('/export', isAuthenticated, async (req: Request, res: Response) => {
     const user  = req.user as any;
     const tagId = req.query.tag as string;
 
-    let query  = `SELECT c.email, c.first_name, c.last_name, c.subscribed, c.hard_bounced, c.created_at
+    const query = `SELECT c.email, c.first_name, c.last_name, c.subscribed, c.hard_bounced, c.created_at
                   FROM contacts c ${tagId ? 'JOIN contact_tags ct ON ct.contact_id=c.id' : ''}
                   WHERE c.user_id=$1 ${tagId ? 'AND ct.tag_id=$2' : ''}
                   ORDER BY c.created_at DESC LIMIT 50000`;
     const { rows } = await pool.query(query, tagId ? [user.id, tagId] : [user.id]);
 
-    const header = 'email,first_name,last_name,subscribed,hard_bounced,created_at\n';
-    const csv    = rows.map((r: any) =>
-      [r.email, r.first_name||'', r.last_name||'', r.subscribed, r.hard_bounced, r.created_at].join(',')
-    ).join('\n');
+    const csv = toCsv(
+      ['email', 'first_name', 'last_name', 'subscribed', 'hard_bounced', 'created_at'],
+      rows.map((r: any) => [r.email, r.first_name || '', r.last_name || '', r.subscribed, r.hard_bounced, r.created_at])
+    );
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="contacts-${Date.now()}.csv"`);
-    res.send(header + csv);
+    res.send(csv);
   } catch (err: any) {
+    logger.error({ error: err.message }, 'Contact export failed');
     res.status(500).json({ error: 'Export failed' });
   }
 });

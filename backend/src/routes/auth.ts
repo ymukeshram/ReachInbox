@@ -1,8 +1,34 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import passport from '../config/passport';
+import { isAuthenticated } from '../middleware/auth';
+import { requirePermission } from '../middleware/rbac';
+import { pool } from '../config/database';
 import { logger } from '../utils/logger';
 
 const router = Router();
+
+// Blocks webhook URLs pointing at loopback/private/link-local addresses (incl.
+// cloud metadata endpoints like 169.254.169.254) to prevent SSRF via a
+// user-configured webhook that the server would otherwise POST to directly.
+const PRIVATE_HOSTNAME_PATTERNS = [
+  /^localhost$/i,
+  /^127\./, /^10\./, /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^0\.0\.0\.0$/,
+  /^\[?::1\]?$/
+];
+
+function isPublicWebhookUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    return !PRIVATE_HOSTNAME_PATTERNS.some(re => re.test(parsed.hostname));
+  } catch {
+    return false;
+  }
+}
 
 router.get('/google', passport.authenticate('google', { 
   scope: ['profile', 'email'], 
@@ -37,21 +63,10 @@ router.get(
 );
 
 router.get('/user', (req, res) => {
-  logger.info({ 
-    isAuthenticated: req.isAuthenticated(), 
-    sessionID: req.sessionID,
-    user: req.user ? 'exists' : 'null',
-    cookies: req.headers.cookie ? 'present' : 'missing'
-  }, 'User check request');
-  
   if (req.isAuthenticated()) {
     res.json(req.user);
   } else {
-    res.status(401).json({ 
-      error: 'Not authenticated',
-      sessionID: req.sessionID,
-      hasCookies: !!req.headers.cookie
-    });
+    res.status(401).json({ error: 'Not authenticated' });
   }
 });
 
@@ -66,6 +81,53 @@ router.post('/logout', (req, res) => {
       res.json({ success: true });
     }
   });
+});
+
+// Webhook configuration (Professional+ only)
+router.get('/webhook', isAuthenticated, requirePermission('canAccessWebhooks'), async (req: Request, res: Response) => {
+  try {
+    const user = req.user as any;
+    const { rows } = await pool.query('SELECT webhook_url, webhook_secret FROM users WHERE id=$1', [user.id]);
+    res.json({
+      webhookUrl:    rows[0]?.webhook_url ?? null,
+      webhookSecret: rows[0]?.webhook_secret ?? null
+    });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to fetch webhook config');
+    res.status(500).json({ error: 'Failed to fetch webhook config' });
+  }
+});
+
+router.post('/webhook', isAuthenticated, requirePermission('canAccessWebhooks'), async (req: Request, res: Response) => {
+  try {
+    const user = req.user as any;
+    const { webhookUrl } = req.body;
+
+    if (webhookUrl && !isPublicWebhookUrl(webhookUrl)) {
+      return res.status(400).json({ error: 'webhookUrl must be a public http(s) URL (private/internal addresses are not allowed)' });
+    }
+
+    const existing = await pool.query('SELECT webhook_secret FROM users WHERE id=$1', [user.id]);
+    const secret = existing.rows[0]?.webhook_secret || crypto.randomBytes(24).toString('hex');
+
+    await pool.query('UPDATE users SET webhook_url=$1, webhook_secret=$2 WHERE id=$3', [webhookUrl || null, secret, user.id]);
+    res.json({ success: true, webhookUrl: webhookUrl || null, webhookSecret: secret });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to update webhook config');
+    res.status(500).json({ error: 'Failed to update webhook config' });
+  }
+});
+
+router.post('/webhook/regenerate-secret', isAuthenticated, requirePermission('canAccessWebhooks'), async (req: Request, res: Response) => {
+  try {
+    const user = req.user as any;
+    const secret = crypto.randomBytes(24).toString('hex');
+    await pool.query('UPDATE users SET webhook_secret=$1 WHERE id=$2', [secret, user.id]);
+    res.json({ success: true, webhookSecret: secret });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to regenerate webhook secret');
+    res.status(500).json({ error: 'Failed to regenerate webhook secret' });
+  }
 });
 
 export default router;

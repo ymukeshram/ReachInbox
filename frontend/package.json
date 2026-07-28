@@ -18,8 +18,7 @@
     "axios": "^1.6.2",
     "socket.io-client": "^4.6.1",
     "recharts": "^2.10.3",
-    "dompurify": "^3.0.8",
-    "date-fns": "^3.0.6"
+    "dompurify": "^3.0.8"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

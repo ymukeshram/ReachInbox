@@ -1,4 +1,5 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { startProgress, stopProgress } from './utils/progressBar';
 
 interface AxiosRequestConfigWithMetadata extends InternalAxiosRequestConfig {
   metadata?: { startTime: Date };
@@ -17,19 +18,22 @@ let isRedirectingToHome = false;
 api.interceptors.request.use(
   (config: AxiosRequestConfigWithMetadata) => {
     config.metadata = { startTime: new Date() };
+    startProgress();
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => { stopProgress(); return Promise.reject(error); }
 );
 
 api.interceptors.response.use(
   (response) => {
+    stopProgress();
     const config = response.config as AxiosRequestConfigWithMetadata;
     const duration = new Date().getTime() - (config.metadata?.startTime?.getTime() || 0);
     if (duration > 3000) console.warn(`Slow API call: ${response.config.url} took ${duration}ms`);
     return response;
   },
   (err: AxiosError) => {
+    stopProgress();
     if (err.response?.status === 401 && window.location.pathname !== '/' && !isRedirectingToHome) {
       isRedirectingToHome = true;
       window.location.href = '/';
@@ -42,6 +46,14 @@ api.interceptors.response.use(
 export const getUser             = () => api.get('/auth/user');
 export const logout              = () => api.post('/auth/logout');
 
+export const getSubscription     = () => api.get('/api/payment/subscription');
+export const getPermissions      = () => api.get('/api/emails/permissions');
+
+// Webhooks (Professional+)
+export const getWebhookConfig    = ()                     => api.get('/auth/webhook');
+export const saveWebhookConfig   = (webhookUrl: string)   => api.post('/auth/webhook', { webhookUrl });
+export const regenerateWebhookSecret = ()                 => api.post('/auth/webhook/regenerate-secret');
+
 export const scheduleEmails      = (formData: FormData) =>
   api.post('/api/emails/schedule', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
@@ -51,10 +63,7 @@ export const getScheduledEmails  = (page = 1, limit = 50) =>
 export const getSentEmails       = (page = 1, limit = 50, search = '') =>
   api.get('/api/emails/sent', { params: { page, limit, ...(search ? { search } : {}) } });
 
-export const cancelEmail         = (id: string)           => api.delete(`/api/emails/${id}`);
 export const bulkCancelEmails    = (emailIds: string[])   => api.post('/api/emails/bulk-cancel', { emailIds });
-export const retryFailedEmails   = (emailIds: string[])   => api.post('/api/emails/retry-failed', { emailIds });
-export const getEmailStats       = ()                     => api.get('/api/emails/stats');
 export const getTemplates        = ()                     => api.get('/api/emails/templates');
 export const saveTemplate        = (data: { name: string; subject: string; body: string }) =>
   api.post('/api/emails/templates', data);
@@ -63,18 +72,10 @@ export const deleteTemplate      = (id: string)           => api.delete(`/api/em
 // Campaigns
 export const getCampaigns        = ()                     => api.get('/api/campaigns');
 export const cancelCampaign      = (id: string)           => api.post(`/api/campaigns/${id}/cancel`);
-export const getCampaign         = (id: string)           => api.get(`/api/campaigns/${id}`);
 
 // Spam score pre-check
 export const checkSpamScore      = (subject: string, body: string) =>
   api.post('/api/emails/spam-check', { subject, body });
-
-// SMTP accounts
-export const getSmtpAccounts     = ()                     => api.get('/api/smtp');
-export const addSmtpAccount      = (data: any)            => api.post('/api/smtp', data);
-export const updateSmtpAccount   = (id: string, data: any)=> api.patch(`/api/smtp/${id}`, data);
-export const deleteSmtpAccount   = (id: string)           => api.delete(`/api/smtp/${id}`);
-export const verifySmtpAccount   = (id: string)           => api.post(`/api/smtp/${id}/verify`);
 
 // Sequences
 export const getSequences        = ()                     => api.get('/api/sequences');
@@ -85,12 +86,20 @@ export const enrollInSequence    = (id: string, data: any)=> api.post(`/api/sequ
 
 // Contacts
 export const getContacts         = (params?: any)         => api.get('/api/contacts', { params });
-export const importContacts      = (formData: FormData)   =>
-  api.post('/api/contacts/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const importContacts      = (formData: FormData, onProgress?: (pct: number) => void) =>
+  api.post('/api/contacts/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (e) => {
+      if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
+    },
+  });
 export const getTags             = ()                     => api.get('/api/contacts/tags');
 export const createTag           = (data: any)            => api.post('/api/contacts/tags', data);
 export const deleteTag           = (id: string)           => api.delete(`/api/contacts/tags/${id}`);
 export const tagContacts         = (data: any)            => api.post('/api/contacts/tag', data);
+export const deleteContact       = (id: string)           => api.delete(`/api/contacts/${id}`);
+export const getSequenceEnrollments = (id: string, page = 1, limit = 50) =>
+  api.get(`/api/sequences/${id}/enrollments`, { params: { page, limit } });
 export const exportContacts      = (tagId?: string) => {
   const API_URL = import.meta.env.VITE_API_URL || '';
   return `${API_URL}/api/contacts/export${tagId ? `?tag=${tagId}` : ''}`;

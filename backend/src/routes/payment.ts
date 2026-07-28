@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import { pool } from '../config/database';
 import { isAuthenticated } from '../middleware/auth';
+import { GRACE_PERIOD_DAYS } from '../middleware/rbac';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -32,9 +33,35 @@ const PLANS = {
     name: 'Enterprise',
     price: 1499900, // ₹14,999 in paise
     emails: -1, // Unlimited
-    features: ['Unlimited emails', 'Real-time analytics', '24/7 support', 'Unlimited users', 'Custom integrations', 'Dedicated account manager']
+    features: ['Unlimited emails', 'Advanced analytics & exports', '24/7 priority support', 'Unlimited users', 'Custom integrations', 'Dedicated account manager']
   }
 };
+
+// Grants (or renews) a paid, non-trial subscription for a user. Shared by the
+// browser-driven /verify-payment flow and the server-to-server /webhook flow,
+// so both paths keep the subscriptions table in sync the same way.
+async function grantSubscription(userId: string, plan: string): Promise<{ plan: string; startDate: Date; endDate: Date }> {
+  const subscriptionId = uuidv4();
+  const startDate = new Date();
+  const endDate = new Date();
+  endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+
+  await pool.query(
+    `INSERT INTO subscriptions (id, user_id, plan, status, is_trial, start_date, end_date, created_at)
+     VALUES ($1, $2, $3, 'active', false, $4, $5, NOW())
+     ON CONFLICT (user_id)
+     DO UPDATE SET
+       plan = EXCLUDED.plan,
+       status = 'active',
+       is_trial = false,
+       start_date = EXCLUDED.start_date,
+       end_date = EXCLUDED.end_date,
+       updated_at = NOW()`,
+    [subscriptionId, userId, plan, startDate, endDate]
+  );
+
+  return { plan, startDate, endDate };
+}
 
 // Create Razorpay order
 router.post('/create-order', isAuthenticated, async (req: Request, res: Response) => {
@@ -87,6 +114,59 @@ router.post('/create-order', isAuthenticated, async (req: Request, res: Response
   }
 });
 
+// Start a no-charge 14-day trial. No Razorpay order is created and no card is
+// charged — the user gets full plan access for 14 days, then automatically
+// falls back to Starter (via the same expiry check /verify-payment relies on)
+// unless they pay before then. Each user gets at most one trial ever: the
+// subscriptions table has exactly one row per user (see grantSubscription),
+// so any existing row — trial or paid — makes them ineligible for a new one.
+router.post('/start-trial', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { plan } = req.body;
+    const user = req.user as any;
+
+    if (plan !== 'professional' && plan !== 'enterprise') {
+      return res.status(400).json({ error: 'Trials are only available for the Professional and Enterprise plans' });
+    }
+
+    const existing = await pool.query('SELECT id FROM subscriptions WHERE user_id = $1', [user.id]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: 'You have already used your free trial or have an existing subscription' });
+    }
+
+    const subscriptionId = uuidv4();
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 14);
+
+    try {
+      await pool.query(
+        `INSERT INTO subscriptions (id, user_id, plan, status, is_trial, start_date, end_date, created_at)
+         VALUES ($1, $2, $3, 'active', true, $4, $5, NOW())`,
+        [subscriptionId, user.id, plan, startDate, endDate]
+      );
+    } catch (err: any) {
+      // Unique violation on user_id means a concurrent request already created
+      // a subscription row for this user — treat it the same as "already used".
+      if (err.code === '23505') {
+        return res.status(400).json({ error: 'You have already used your free trial or have an existing subscription' });
+      }
+      throw err;
+    }
+
+    logger.info({ userId: user.id, plan }, 'Free trial started');
+
+    res.json({
+      success: true,
+      message: `Your 14-day ${PLANS[plan as keyof typeof PLANS].name} trial has started.`,
+      subscription: { plan, status: 'active', isTrial: true, startDate, endDate }
+    });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to start trial');
+    res.status(500).json({ error: 'Failed to start trial' });
+  }
+});
+
 // Verify payment
 router.post('/verify-payment', isAuthenticated, async (req: Request, res: Response) => {
   try {
@@ -121,6 +201,25 @@ router.post('/verify-payment', isAuthenticated, async (req: Request, res: Respon
 
     const order = orderResult.rows[0];
 
+    // Idempotency guard: this exact order was already verified and granted once.
+    // Without this, replaying the same (still-valid) signed payload would keep
+    // renewing/extending the subscription indefinitely for free.
+    if (order.status === 'completed') {
+      const existing = await pool.query(
+        'SELECT plan, start_date, end_date FROM subscriptions WHERE user_id = $1',
+        [user.id]
+      );
+      return res.json({
+        success: true,
+        message: 'Payment already verified.',
+        subscription: existing.rows[0] ? {
+          plan: existing.rows[0].plan,
+          startDate: existing.rows[0].start_date,
+          endDate: existing.rows[0].end_date
+        } : null
+      });
+    }
+
     // Update order status
     await pool.query(
       `UPDATE payment_orders 
@@ -130,38 +229,18 @@ router.post('/verify-payment', isAuthenticated, async (req: Request, res: Respon
     );
 
     // Create or update subscription
-    const subscriptionId = uuidv4();
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + 1); // 1 month subscription
+    const subscription = await grantSubscription(user.id, order.plan);
 
-    await pool.query(
-      `INSERT INTO subscriptions (id, user_id, plan, status, start_date, end_date, created_at)
-       VALUES ($1, $2, $3, 'active', $4, $5, NOW())
-       ON CONFLICT (user_id) 
-       DO UPDATE SET 
-         plan = EXCLUDED.plan,
-         status = 'active',
-         start_date = EXCLUDED.start_date,
-         end_date = EXCLUDED.end_date,
-         updated_at = NOW()`,
-      [subscriptionId, user.id, order.plan, startDate, endDate]
-    );
-
-    logger.info({ 
-      userId: user.id, 
-      plan: order.plan, 
-      paymentId: razorpay_payment_id 
+    logger.info({
+      userId: user.id,
+      plan: order.plan,
+      paymentId: razorpay_payment_id
     }, 'Payment verified and subscription activated');
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'Payment successful! Your subscription is now active.',
-      subscription: {
-        plan: order.plan,
-        startDate,
-        endDate
-      }
+      subscription
     });
   } catch (err: any) {
     logger.error({ error: err.message }, 'Payment verification failed');
@@ -179,10 +258,15 @@ router.get('/subscription', isAuthenticated, async (req: Request, res: Response)
       [user.id]
     );
 
-    if (result.rows.length === 0) {
-      return res.json({ 
+    const graceMs = GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+    const isExpired = result.rows.length > 0
+      && result.rows[0].end_date
+      && new Date(result.rows[0].end_date).getTime() + graceMs <= Date.now();
+
+    if (result.rows.length === 0 || isExpired) {
+      return res.json({
         plan: 'starter',
-        status: 'active',
+        status: isExpired ? 'expired' : 'active',
         features: PLANS.starter.features
       });
     }
@@ -192,12 +276,79 @@ router.get('/subscription', isAuthenticated, async (req: Request, res: Response)
 
     res.json({
       ...subscription,
+      isTrial: subscription.is_trial === true,
       features: planDetails.features,
       emailLimit: planDetails.emails
     });
   } catch (err: any) {
     logger.error({ error: err.message }, 'Failed to fetch subscription');
     res.status(500).json({ error: 'Failed to fetch subscription' });
+  }
+});
+
+// Razorpay server-to-server webhook — backs up /verify-payment for cases
+// where the browser closes/crashes before the client-side handler runs.
+// Requires RAZORPAY_WEBHOOK_SECRET to be set and the webhook URL + secret to
+// be configured in the Razorpay dashboard (Settings -> Webhooks), pointed at
+// POST <backend-url>/api/payment/webhook with the "payment.captured" event.
+router.post('/webhook', async (req: Request, res: Response) => {
+  try {
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!secret) {
+      logger.error('RAZORPAY_WEBHOOK_SECRET is not configured; rejecting webhook call');
+      return res.status(500).json({ error: 'Webhook not configured' });
+    }
+
+    const signature = req.headers['x-razorpay-signature'] as string | undefined;
+    if (!signature || !req.rawBody) {
+      return res.status(400).json({ error: 'Missing signature' });
+    }
+
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(req.rawBody)
+      .digest('hex');
+
+    if (expectedSignature !== signature) {
+      logger.warn('Razorpay webhook signature verification failed');
+      return res.status(400).json({ error: 'Invalid signature' });
+    }
+
+    const event = req.body;
+
+    if (event.event === 'payment.captured') {
+      const payment = event.payload?.payment?.entity;
+      const orderId = payment?.order_id;
+      const paymentId = payment?.id;
+
+      if (orderId) {
+        const orderResult = await pool.query(
+          'SELECT * FROM payment_orders WHERE razorpay_order_id = $1',
+          [orderId]
+        );
+
+        if (orderResult.rows.length > 0) {
+          const order = orderResult.rows[0];
+
+          if (order.status !== 'completed') {
+            await pool.query(
+              `UPDATE payment_orders SET status = 'completed', razorpay_payment_id = $1, updated_at = NOW()
+               WHERE razorpay_order_id = $2`,
+              [paymentId, orderId]
+            );
+            await grantSubscription(order.user_id, order.plan);
+            logger.info({ userId: order.user_id, plan: order.plan, orderId }, 'Subscription granted via webhook reconciliation');
+          }
+        } else {
+          logger.warn({ orderId }, 'Webhook payment.captured for unknown order');
+        }
+      }
+    }
+
+    res.json({ received: true });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Webhook processing failed');
+    res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 

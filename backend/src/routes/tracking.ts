@@ -1,8 +1,19 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../config/database';
 import { logger } from '../utils/logger';
+import { sendWebhook } from '../services/webhookService';
 
 const router = Router();
+
+// Only allow redirecting to http(s) links — blocks javascript:/data:/file: URI abuse
+// of this endpoint as an open redirector with a non-web scheme.
+function isSafeRedirectUrl(url: string): boolean {
+  try {
+    return ['http:', 'https:'].includes(new URL(url).protocol);
+  } catch {
+    return false;
+  }
+}
 
 // 1x1 transparent GIF for email open tracking
 const TRACKING_PIXEL = Buffer.from(
@@ -18,15 +29,27 @@ router.get('/open/:emailId', async (req: Request, res: Response) => {
     const ipAddress = req.ip || req.headers['x-forwarded-for'] || '';
 
     // Update email with opened_at timestamp
-    await pool.query(
-      `UPDATE emails 
-       SET opened_at = COALESCE(opened_at, NOW()), 
+    const { rows: openedRows } = await pool.query(
+      `UPDATE emails
+       SET opened_at = COALESCE(opened_at, NOW()),
            open_count = COALESCE(open_count, 0) + 1,
            last_opened_at = NOW(),
            updated_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1
+       RETURNING recipient_email, user_id`,
       [emailId]
     );
+
+    if (openedRows.length > 0) {
+      sendWebhook({
+        event: 'email.opened',
+        emailId,
+        recipientEmail: openedRows[0].recipient_email,
+        status: 'opened',
+        timestamp: new Date().toISOString(),
+        userId: openedRows[0].user_id
+      }).catch(() => {});
+    }
 
     // Log the open event (optional - for detailed analytics)
     await pool.query(
@@ -60,20 +83,32 @@ router.get('/click/:emailId', async (req: Request, res: Response) => {
     const userAgent = req.headers['user-agent'] || '';
     const ipAddress = req.ip || req.headers['x-forwarded-for'] || '';
 
-    if (!url || typeof url !== 'string') {
+    if (!url || typeof url !== 'string' || !isSafeRedirectUrl(url)) {
       return res.status(400).send('Invalid URL');
     }
 
     // Update email with clicked_at timestamp
-    await pool.query(
-      `UPDATE emails 
+    const { rows: clickedRows } = await pool.query(
+      `UPDATE emails
        SET clicked_at = COALESCE(clicked_at, NOW()),
            click_count = COALESCE(click_count, 0) + 1,
            last_clicked_at = NOW(),
            updated_at = NOW()
-       WHERE id = $1`,
+       WHERE id = $1
+       RETURNING recipient_email, user_id`,
       [emailId]
     );
+
+    if (clickedRows.length > 0) {
+      sendWebhook({
+        event: 'email.clicked',
+        emailId,
+        recipientEmail: clickedRows[0].recipient_email,
+        status: 'clicked',
+        timestamp: new Date().toISOString(),
+        userId: clickedRows[0].user_id
+      }).catch(() => {});
+    }
 
     // Log the click event
     await pool.query(
@@ -91,7 +126,7 @@ router.get('/click/:emailId', async (req: Request, res: Response) => {
     
     // Still redirect even if tracking fails
     const url = req.query.url as string;
-    if (url) {
+    if (url && isSafeRedirectUrl(url)) {
       res.redirect(url);
     } else {
       res.status(400).send('Invalid URL');

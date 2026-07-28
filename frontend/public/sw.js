@@ -1,5 +1,5 @@
-const CACHE_NAME = 'reachify-v3';
-const STATIC_ASSETS = ['/favicon.svg'];
+const CACHE_NAME = 'reachify-v4';
+const STATIC_ASSETS = ['/', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -28,7 +28,7 @@ self.addEventListener('fetch', (event) => {
   // For navigation requests (HTML pages), always go to network so the SPA
   // loads fresh. This prevents stale index.html from causing routing issues.
   if (request.mode === 'navigate') {
-    event.respondWith(fetch(request).catch(() => caches.match('/favicon.svg')));
+    event.respondWith(fetch(request).catch(() => caches.match('/')));
     return;
   }
 

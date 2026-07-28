@@ -4,6 +4,7 @@ import { pool } from '../config/database';
 import { emailQueue } from '../queue/emailQueue';
 import { isAuthenticated } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { getPagination } from '../utils/pagination';
 
 const router = Router();
 
@@ -86,6 +87,7 @@ router.get('/:id', isAuthenticated, async (req: Request, res: Response) => {
     if (seqRes.rows.length === 0) return res.status(404).json({ error: 'Sequence not found' });
     return res.json({ ...seqRes.rows[0], steps: stepsRes.rows });
   } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to fetch sequence');
     res.status(500).json({ error: 'Failed to fetch sequence' });
   }
 });
@@ -96,6 +98,7 @@ router.delete('/:id', isAuthenticated, async (req: Request, res: Response) => {
     await pool.query('DELETE FROM sequences WHERE id=$1 AND user_id=$2', [req.params.id, user.id]);
     return res.json({ success: true });
   } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to delete sequence');
     res.status(500).json({ error: 'Failed to delete sequence' });
   }
 });
@@ -158,8 +161,7 @@ router.get('/:id/enrollments', isAuthenticated, async (req: Request, res: Respon
   try {
     const user  = req.user as any;
     const seqId = req.params.id;
-    const page  = Math.max(1, parseInt(req.query.page as string)||1);
-    const limit = Math.min(100, parseInt(req.query.limit as string)||50);
+    const { page, limit } = getPagination(req);
 
     const check = await pool.query('SELECT id FROM sequences WHERE id=$1 AND user_id=$2',[seqId,user.id]);
     if (check.rows.length===0) return res.status(404).json({ error: 'Sequence not found' });
@@ -183,6 +185,7 @@ router.get('/:id/enrollments', isAuthenticated, async (req: Request, res: Respon
       page, limit
     });
   } catch (err: any) {
+    logger.error({ error: err.message }, 'Failed to fetch enrollments');
     res.status(500).json({ error: 'Failed to fetch enrollments' });
   }
 });

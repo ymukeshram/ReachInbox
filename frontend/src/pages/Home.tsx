@@ -13,6 +13,7 @@ function Home() {
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' | 'warning' } | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [activeIndustry, setActiveIndustry] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const industries = [
     {
@@ -27,13 +28,12 @@ function Home() {
       badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
       headline: 'Land your dream job, faster',
       subheadline: 'Stop applying into the void. Cold email the hiring manager directly.',
-      description: 'Most job applications get lost in ATS. Reachify lets you find hiring managers and recruiters, personalise every email with their name and company, and automatically follow up if they don\'t reply — all without lifting a finger after the first setup.',
+      description: 'Most applications disappear into an ATS. Reachify helps you find hiring managers, personalise every email, and follow up automatically until you get a reply.',
       bullets: [
         'Upload a CSV of 500+ companies and HR contacts in seconds',
         'Personalise every email with {{company}}, {{role}}, {{first_name}}',
-        'Auto follow-up after 3 days if no reply — politely persistent',
+        'Auto follow-up after 3 days if there\'s no reply',
         'Track exactly who opened your email and when',
-        'Built-in spam checker so your email lands in inbox, not spam',
       ],
       stat: { value: '3×', label: 'more interview calls vs. job portals' },
       example: {
@@ -53,12 +53,11 @@ function Home() {
       badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
       headline: 'Fill every batch. Retain every student.',
       subheadline: 'Turn course inquiries into enrollments with automated nurture sequences.',
-      description: 'EdTech platforms lose 60–70% of leads who never convert. Reachify helps you send personalised enrollment reminders, course recommendations, and re-engagement campaigns at scale — without a dedicated email marketing team.',
+      description: 'EdTech platforms lose most leads who never convert. Reachify sends personalised enrollment reminders and re-engagement campaigns at scale — no dedicated email team needed.',
       bullets: [
         'Send batch announcements to 10,000 leads in minutes',
         'Personalise with {{student_name}}, {{course}}, {{discount_code}}',
         'Multi-step sequences: reminder → deadline alert → final offer',
-        'Track open rates per campaign to see what messaging works',
         'Auto-suppress students who already enrolled',
       ],
       stat: { value: '45%', label: 'higher enrollment conversion rate' },
@@ -79,13 +78,12 @@ function Home() {
       badge: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
       headline: 'Build pipeline. Close deals. Repeat.',
       subheadline: 'Turn cold prospects into warm leads with multi-touch email sequences.',
-      description: 'B2B sales is a numbers game. Reachify lets your team send hundreds of personalised cold emails daily, automate follow-ups, rotate SMTP accounts to avoid spam filters, and track which prospects are engaging — so reps can focus on the warm ones.',
+      description: 'B2B sales is a numbers game. Reachify sends hundreds of personalised cold emails a day, automates follow-ups, and shows you exactly who\'s engaging.',
       bullets: [
         'Import prospect lists from LinkedIn exports or CRM CSV',
-        'Multi-SMTP rotation across team accounts for higher deliverability',
+        'Sent through Reachify\'s managed delivery infrastructure for higher deliverability',
         '5-step sequences: intro → value → case study → objection → breakup',
-        'Real-time alerts when a prospect opens 3+ times (buy signal)',
-        'Campaign-level analytics: open rate, reply rate, bounce rate',
+        'Real-time alerts when a prospect opens 3+ times',
       ],
       stat: { value: '2.7×', label: 'more pipeline from same-size team' },
       example: {
@@ -105,13 +103,12 @@ function Home() {
       badge: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300',
       headline: 'Raise faster. Partner smarter.',
       subheadline: 'Cold email 500 investors in a weekend without burning your reputation.',
-      description: 'Warm intros are great — but you can\'t always get one. Reachify lets founders send highly personalised investor outreach at scale, follow up automatically without being annoying, and track which investors opened the deck. No agency needed.',
+      description: 'Warm intros aren\'t always an option. Reachify lets founders send personalised investor outreach at scale and follow up without being annoying — no agency needed.',
       bullets: [
         'Personalise with {{investor_name}}, {{fund}}, {{portfolio_co}}',
         'Attach your pitch deck to every email in the batch',
-        'Know instantly when an investor opens your email (real-time)',
-        'Automated follow-up sequences — respectful, not spammy',
-        'Separate campaigns for angels, VCs, and strategic partners',
+        'Know instantly when an investor opens your email',
+        'Automated, respectful follow-up sequences',
       ],
       stat: { value: '12%', label: 'avg investor reply rate for personalised cold outreach' },
       example: {
@@ -131,13 +128,12 @@ function Home() {
       badge: 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300',
       headline: 'Source passive talent at scale.',
       subheadline: 'Reach 1,000 candidates before your competitor even shortlists 10.',
-      description: 'The best candidates aren\'t applying on Naukri. Reachify helps recruiters and talent acquisition teams send personalised outreach to passive candidates at scale, automate follow-ups, and track engagement — filling positions weeks faster than traditional methods.',
+      description: 'The best candidates aren\'t browsing job boards. Reachify helps you reach passive candidates at scale and automate follow-ups — filling roles weeks faster.',
       bullets: [
         'Import candidate lists from LinkedIn or internal databases',
         'Personalise with {{candidate_name}}, {{current_company}}, {{role}}',
         'Sequence: intro → role details → salary range → final nudge',
-        'Track who opened (interested) vs. who ignored (move on)',
-        'Auto-suppress candidates who replied or unsubscribed',
+        'Track who opened vs. who ignored, and move on faster',
       ],
       stat: { value: '40%', label: 'faster time-to-hire vs. job board-only approach' },
       example: {
@@ -157,13 +153,12 @@ function Home() {
       badge: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300',
       headline: 'List more. Sell faster.',
       subheadline: 'Blast property listings to 5,000 qualified buyers in under a minute.',
-      description: 'Real estate runs on speed and relationships. Reachify lets agents and brokers blast new listings, announce open houses, and follow up with interested buyers — all personalised with property details, buyer names, and budget ranges.',
+      description: 'Real estate runs on speed. Reachify lets agents blast new listings and follow up with interested buyers, personalised with property details and budget.',
       bullets: [
-        'Send new property alerts to your entire buyer database instantly',
+        'Send new property alerts to your buyer database instantly',
         'Personalise with {{buyer_name}}, {{locality}}, {{budget_range}}',
-        'Follow-up sequences for site visit → negotiation → closing',
-        'Track which buyers opened and clicked for listing links',
-        'Seasonal campaigns: Diwali offers, year-end clearance, etc.',
+        'Follow-up sequences from site visit through closing',
+        'Track which buyers opened and clicked your listings',
       ],
       stat: { value: '28%', label: 'more site visits from personalised listing emails' },
       example: {
@@ -183,13 +178,12 @@ function Home() {
       badge: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
       headline: 'Recover revenue. Drive repeat purchases.',
       subheadline: 'Re-engage dormant buyers and recover abandoned carts at scale.',
-      description: 'Over 70% of online carts are abandoned. Reachify helps e-commerce brands send personalised cart recovery emails, seasonal promotions, and loyalty campaigns — with precise scheduling and real-time tracking so you know exactly which email drove the sale.',
+      description: 'Most online carts are abandoned. Reachify sends personalised cart-recovery emails and seasonal campaigns, with tracking that shows exactly what drove the sale.',
       bullets: [
-        'Cart recovery sequences: 1hr → 24hr → 72hr with escalating offers',
+        'Cart recovery sequence: 1hr → 24hr → 72hr, escalating offers',
         'Personalise with {{first_name}}, {{product}}, {{discount_code}}',
-        'Seasonal blasts: Diwali, End of Season, Flash Sales in minutes',
+        'Seasonal blasts in minutes: Diwali, flash sales, end of season',
         'Re-engagement for customers inactive 60+ days',
-        'Track revenue attribution per email campaign',
       ],
       stat: { value: '15–20%', label: 'cart recovery rate with 3-step sequences' },
       example: {
@@ -209,13 +203,12 @@ function Home() {
       badge: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
       headline: 'Run client campaigns at agency scale.',
       subheadline: 'Manage outreach for 10 clients from one dashboard — no messy spreadsheets.',
-      description: 'Agencies waste hours setting up separate tools for each client. Reachify lets you run personalised email campaigns for multiple clients under one account, with separate SMTP accounts per client, campaign-level analytics, and CSV/Excel imports straight from client CRM exports.',
+      description: 'Running separate tools per client wastes hours. Reachify runs personalised campaigns for every client from one account, all through the same reliable delivery pipeline.',
       bullets: [
-        'Separate SMTP per client — sender identity stays clean',
-        'Upload client lists in CSV or Excel — no reformatting needed',
+        'Segment and tag contacts by client, no mixing lists',
+        'Upload client lists in CSV or Excel, no reformatting needed',
         'Personalise with {{client_name}}, {{company}}, {{campaign}}',
-        'Campaign-level reporting to share with clients every week',
-        'White-label email templates per client brand voice',
+        'Campaign-level reporting to share with clients weekly',
       ],
       stat: { value: '5×', label: 'more campaigns managed per account manager' },
       example: {
@@ -235,13 +228,12 @@ function Home() {
       badge: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-300',
       headline: 'Get every student placed.',
       subheadline: 'Automate company outreach so your placement cell can focus on prep, not email.',
-      description: 'Placement cells at colleges spend weeks manually emailing companies for JD approvals, PPT slots, and offer letters. Reachify lets you upload your target company list from Excel, personalise every outreach, and automatically follow up — so no opportunity slips through the cracks.',
+      description: 'Placement cells lose weeks manually emailing companies for JD approvals and offer letters. Reachify automates the outreach so nothing slips through the cracks.',
       bullets: [
-        'Import target company list from Excel directly — no CSV conversion',
+        'Import your target company list from Excel directly',
         'Personalise with {{company}}, {{hr_name}}, {{batch_year}}, {{branch}}',
         'Automated follow-up if HR doesn\'t respond in 5 days',
-        'Track which companies opened the JD request or PPT invite',
-        'Separate campaigns for Day 1 companies vs. mass recruiters',
+        'Track which companies opened your JD or PPT invite',
       ],
       stat: { value: '60%', label: 'faster company onboarding for placement season' },
       example: {
@@ -266,7 +258,7 @@ function Home() {
         </svg>
       ),
       title: 'Smart Scheduling',
-      description: 'Schedule thousands of emails in advance with precise timing controls. Set start times, inter-email delays, and hourly caps to stay within provider limits.',
+      description: 'Schedule thousands of emails in advance, with delays and hourly caps to stay within provider limits.',
       color: 'from-blue-500 to-cyan-500',
       bg: 'bg-blue-50 dark:bg-blue-900/20',
       text: 'text-blue-600 dark:text-blue-400',
@@ -278,7 +270,7 @@ function Home() {
         </svg>
       ),
       title: 'Real-time Analytics',
-      description: 'Track open rates, click rates, bounces, and delivery stats in real-time. Get actionable insights with beautiful charts and campaign-level breakdowns.',
+      description: 'Track opens, clicks, bounces, and delivery in real time, broken down by campaign.',
       color: 'from-purple-500 to-pink-500',
       bg: 'bg-purple-50 dark:bg-purple-900/20',
       text: 'text-purple-600 dark:text-purple-400',
@@ -290,7 +282,7 @@ function Home() {
         </svg>
       ),
       title: 'Contact Management',
-      description: 'Import contacts from CSV or Excel, tag and segment them, auto-suppress unsubscribes and hard bounces so your list stays clean and your sender score stays high.',
+      description: 'Import contacts from CSV or Excel, tag and segment them, and auto-suppress bounces and unsubscribes.',
       color: 'from-green-500 to-emerald-500',
       bg: 'bg-green-50 dark:bg-green-900/20',
       text: 'text-green-600 dark:text-green-400',
@@ -302,7 +294,7 @@ function Home() {
         </svg>
       ),
       title: 'Follow-up Sequences',
-      description: 'Build multi-step email sequences that automatically follow up with leads. Set delays between steps and let Reachify handle the entire nurture journey.',
+      description: 'Build multi-step sequences that follow up with leads automatically, on the schedule you set.',
       color: 'from-orange-500 to-red-500',
       bg: 'bg-orange-50 dark:bg-orange-900/20',
       text: 'text-orange-600 dark:text-orange-400',
@@ -314,7 +306,7 @@ function Home() {
         </svg>
       ),
       title: 'Spam Score Checker',
-      description: 'Get a real-time spam analysis of your subject line and body before sending. Our AI flags risky patterns so your emails land in the inbox, not spam.',
+      description: 'Get a real-time spam-risk check on your subject and body before you hit send.',
       color: 'from-yellow-500 to-amber-500',
       bg: 'bg-yellow-50 dark:bg-yellow-900/20',
       text: 'text-yellow-600 dark:text-yellow-400',
@@ -325,8 +317,8 @@ function Home() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
         </svg>
       ),
-      title: 'SMTP Rotation',
-      description: 'Connect multiple SMTP accounts and Reachify automatically rotates between them to distribute sending load, improve deliverability, and avoid rate limits.',
+      title: 'Reliable Delivery Infrastructure',
+      description: 'Every email is sent through our managed delivery pipeline with proper authentication, so you don\'t have to babysit your own mailboxes.',
       color: 'from-indigo-500 to-purple-500',
       bg: 'bg-indigo-50 dark:bg-indigo-900/20',
       text: 'text-indigo-600 dark:text-indigo-400',
@@ -337,39 +329,39 @@ function Home() {
     { value: '10M+', label: 'Emails Delivered' },
     { value: '99.9%', label: 'Platform Uptime' },
     { value: '35%', label: 'Avg Open Rate' },
-    { value: '<100ms', label: 'API Response' },
+    { value: '<100ms', label: 'Response Time' },
   ];
 
   const steps = [
     {
       num: '01',
       title: 'Upload',
-      desc: 'Import your audience from a CSV or Excel file. Columns like first_name, company, role are auto-detected and ready for personalisation.',
+      desc: 'Import your list from a CSV or Excel file — columns like name and company are auto-detected.',
     },
     {
       num: '02',
       title: 'Personalize',
-      desc: 'Write your email and insert dynamic tokens — {{first_name}}, {{company}}, {{role}}. Every recipient gets a unique, human-feeling message.',
+      desc: 'Write one email with tokens like {{first_name}} — each recipient gets a version that reads like it was written just for them.',
     },
     {
       num: '03',
       title: 'Launch',
-      desc: 'Set your start time, sending rate, and hourly cap. Our spam checker flags issues before you hit send — inbox, not junk.',
+      desc: 'Set your start time and sending rate. The spam checker flags issues before you hit send.',
     },
     {
       num: '04',
       title: 'Reach',
-      desc: 'Emails go out on schedule via your SMTP accounts with automatic rotation to maximise deliverability and stay within sending limits.',
+      desc: 'Emails go out on schedule, rotating across your connected accounts to stay within limits.',
     },
     {
       num: '05',
       title: 'Automate',
-      desc: 'Build multi-step follow-up sequences. If a contact doesn\'t reply in N days, the next email goes out automatically — no manual chasing.',
+      desc: 'No reply after a few days? The next follow-up sends itself.',
     },
     {
       num: '06',
       title: 'Monitor',
-      desc: 'Track opens, clicks, bounces, and campaign delivery in real-time. Hard bounces and unsubscribes are auto-suppressed to protect your sender reputation.',
+      desc: 'Watch opens, clicks, and bounces roll in live — unsubscribes are suppressed automatically.',
     },
   ];
 
@@ -391,7 +383,7 @@ function Home() {
     {
       name: 'Anita Desai',
       role: 'Growth Lead, E-commerce Plus',
-      content: 'The SMTP rotation feature is a game changer. We connect three Gmail accounts and Reachify spreads the load automatically. Our deliverability went up 20% in the first week.',
+      content: 'Deliverability is a game changer. No SMTP setup, no App Passwords to babysit — we just write emails and Reachify handles the rest. Our deliverability went up 20% in the first week.',
       initials: 'AD',
       color: 'from-orange-500 to-red-500',
     },
@@ -400,15 +392,15 @@ function Home() {
   const faqs = [
     {
       q: 'How is Reachify different from Mailchimp or SendGrid?',
-      a: 'Reachify is built specifically for cold outreach and bulk scheduling with your own SMTP accounts. You\'re not paying for a sending infrastructure you don\'t control — you bring your own Gmail, Outlook, or custom SMTP and Reachify handles the scheduling, personalisation, bounce tracking, and analytics.',
+      a: 'Reachify is built specifically for cold outreach — personalised sequences, scheduling, deliverability-safe sending, bounce tracking, and analytics, all in one dashboard.',
     },
     {
-      q: 'Can I use my existing Gmail or Outlook account?',
-      a: 'Yes. Add your Gmail (via App Password), Outlook, or any SMTP-compatible provider under SMTP Settings. Reachify will use it to send emails on your behalf. You can add multiple accounts and enable automatic rotation.',
+      q: 'Do I need to connect my own Gmail or Outlook account?',
+      a: 'No. Reachify sends every campaign through its own managed email infrastructure, with proper authentication already in place — there\'s nothing to configure on your end.',
     },
     {
       q: 'What happens to unsubscribes and bounced emails?',
-      a: 'Every email automatically includes an unsubscribe link. When a contact unsubscribes or hard-bounces, they are permanently suppressed from all future campaigns — no manual cleanup needed.',
+      a: 'Every email includes an unsubscribe link. Unsubscribes and hard bounces are suppressed from all future campaigns automatically.',
     },
     {
       q: 'Is there a free plan?',
@@ -420,7 +412,7 @@ function Home() {
     },
     {
       q: 'How does personalisation work?',
-      a: 'Include columns like first_name, last_name, company, role in your CSV or Excel file. Then use {{first_name}}, {{company}} etc. in your subject or body — Reachify replaces them for each recipient automatically.',
+      a: 'Add columns like first_name, company, role to your CSV or Excel file, then use {{first_name}}, {{company}} in your subject or body — Reachify fills them in per recipient.',
     },
   ];
 
@@ -445,7 +437,7 @@ function Home() {
             ))}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={() => setDarkMode(!darkMode)}
               className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
@@ -469,12 +461,58 @@ function Home() {
             </button>
             <button
               onClick={() => navigate('/login')}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition shadow-sm hover:shadow-md"
+              className="hidden sm:block bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 sm:px-5 py-2.5 rounded-xl transition shadow-sm hover:shadow-md"
             >
               Get Started Free
             </button>
+            <button
+              onClick={() => setMobileMenuOpen(o => !o)}
+              className="md:hidden p-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              {mobileMenuOpen ? (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
+
+        {/* Mobile menu panel */}
+        {mobileMenuOpen && (
+          <div className="md:hidden bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 px-6 py-4 space-y-1 shadow-lg">
+            {[['Features', '#features'], ['Use Cases', '#use-cases'], ['How It Works', '#how-it-works'], ['Pricing', '#pricing'], ['FAQ', '#faq']].map(([label, href]) => (
+              <a
+                key={label}
+                href={href}
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+              >
+                {label}
+              </a>
+            ))}
+            <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800 flex flex-col gap-2">
+              <button
+                onClick={() => navigate('/login')}
+                className="w-full text-center text-sm font-medium text-gray-700 dark:text-gray-300 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700"
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => navigate('/login')}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-xl transition"
+              >
+                Get Started Free
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Hero Section */}
@@ -485,14 +523,14 @@ function Home() {
             Built for Indian businesses · Priced in ₹ · Free to start
           </div>
 
-          <h1 className={`text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 tracking-tight transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
+          <h1 className={`text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold mb-6 tracking-tight transition-all duration-700 delay-100 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
             <span className="text-gray-900 dark:text-white">Email outreach</span>
             <br />
             <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">at scale, finally.</span>
           </h1>
 
           <p className={`text-xl text-gray-600 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed transition-all duration-700 delay-200 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-            Built for recruiters, enterprises, startups, agencies, EdTech platforms, and e-commerce businesses. Upload your audience via CSV or Excel, personalise every email, automate follow-ups, and monitor results — all in one dashboard.
+            Upload your list, personalise every email, automate follow-ups, and track results — all from one dashboard.
           </p>
 
           <div className={`flex flex-col sm:flex-row items-center justify-center gap-4 transition-all duration-700 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
@@ -670,9 +708,9 @@ function Home() {
                       {ind.example.body}
                     </div>
 
-                    {/* Personalisation tokens */}
+                    {/* Personalisation fields */}
                     <div className="mt-5">
-                      <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">Personalisation tokens auto-filled per recipient</p>
+                      <p className="text-xs text-gray-400 mb-2 font-medium uppercase tracking-wider">Personalisation fields auto-filled per recipient</p>
                       <div className="flex flex-wrap gap-2">
                         {[...new Set([
                           ...(ind.example.subject.match(/\{\{[^}]+\}\}/g) || []),
@@ -727,7 +765,7 @@ function Home() {
                   'Basic analytics dashboard',
                   'CSV & Excel upload & personalisation',
                   'Bounce & unsubscribe tracking',
-                  '1 SMTP account',
+                  'Standard sending speed',
                   'Email support',
                 ],
                 cta: 'Get Started Free',
@@ -743,11 +781,11 @@ function Home() {
                   '50,000 emails / month',
                   'Advanced analytics & exports',
                   'Follow-up sequences',
-                  'Multi-SMTP rotation',
+                  'Priority sending queue',
                   'Spam score checker',
                   '5 users',
                   'Priority support (< 4 hr response)',
-                  'API access',
+                  'Developer access (API)',
                 ],
                 cta: 'Start 14-day Trial',
                 plan: 'professional',
@@ -763,7 +801,7 @@ function Home() {
                   'All Professional features',
                   'Unlimited users',
                   'Dedicated account manager',
-                  'Custom integrations & webhooks',
+                  'Custom integrations & instant notifications',
                   'White-label option',
                   '24/7 priority support',
                   'SLA: 99.9% uptime guarantee',
@@ -960,10 +998,10 @@ function Home() {
             <div>
               <h4 className="font-semibold text-sm mb-4 text-gray-300 uppercase tracking-wider">Legal</h4>
               <ul className="space-y-3 text-sm text-gray-400">
-                <li><a href="#" className="hover:text-white transition">Privacy Policy</a></li>
-                <li><a href="#" className="hover:text-white transition">Terms of Service</a></li>
-                <li><a href="#" className="hover:text-white transition">Cookie Policy</a></li>
-                <li><a href="#" className="hover:text-white transition">GDPR Compliance</a></li>
+                <li><button onClick={() => navigate('/privacy-policy')} className="hover:text-white transition">Privacy Policy</button></li>
+                <li><button onClick={() => navigate('/terms-of-service')} className="hover:text-white transition">Terms of Service</button></li>
+                <li><button onClick={() => navigate('/cookie-policy')} className="hover:text-white transition">Cookie Policy</button></li>
+                <li><button onClick={() => navigate('/gdpr-compliance')} className="hover:text-white transition">GDPR Compliance</button></li>
               </ul>
             </div>
           </div>
@@ -979,8 +1017,8 @@ function Home() {
         <PaymentModal
           plan={selectedPlan}
           onClose={() => setSelectedPlan(null)}
-          onSuccess={() => {
-            setNotification({ message: 'Payment successful! Your subscription is now active.', type: 'success' });
+          onSuccess={(message) => {
+            setNotification({ message: message || 'Your subscription is now active.', type: 'success' });
             setSelectedPlan(null);
             setTimeout(() => navigate('/dashboard'), 2000);
           }}

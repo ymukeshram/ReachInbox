@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { isValidEmail } from '../utils/validation';
 
 export interface EmailData {
   [key: string]: string;
@@ -35,10 +36,6 @@ function parseCSVLine(line: string): string[] {
   }
   result.push(current.trim());
   return result;
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(email);
 }
 
 export function parseCSVWithHeaders(content: string): ParseResult {

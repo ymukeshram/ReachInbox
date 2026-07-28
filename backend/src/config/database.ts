@@ -145,15 +145,6 @@ export async function initDatabase() {
 
     await client.query(`CREATE INDEX IF NOT EXISTS idx_payment_orders_user_id ON payment_orders(user_id)`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)`);
-    
-    // Data retention: Auto-delete emails older than 90 days
-    await client.query(`
-      CREATE OR REPLACE FUNCTION cleanup_old_emails() RETURNS void AS $$
-      BEGIN
-        DELETE FROM emails WHERE created_at < NOW() - INTERVAL '90 days';
-      END;
-      $$ LANGUAGE plpgsql;
-    `);
 
   } finally {
     client.release();

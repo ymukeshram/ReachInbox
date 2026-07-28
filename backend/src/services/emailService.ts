@@ -1,5 +1,6 @@
-import nodemailer, { Transporter } from 'nodemailer';
 import { logger } from '../utils/logger';
+import { addClickTracking } from '../utils/emailTracking';
+import { incrementMetric } from '../utils/metrics';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -27,39 +28,15 @@ export function classifyBounce(errorMessage: string): BounceType {
   return 'unknown';
 }
 
-// ─── System (default) SMTP transporter ───────────────────────────────────────
+// ─── Brevo transactional email API ───────────────────────────────────────────
 
-const systemTransporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  pool: true,
-  maxConnections: 10,
-  maxMessages: 100,
-  rateDelta: 1000,
-  rateLimit: 10,
-  connectionTimeout: 30000,
-  greetingTimeout: 30000,
-  socketTimeout: 30000
-});
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
-let smtpReady = false;
-async function verifySystemSmtp(retries = 3): Promise<void> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await systemTransporter.verify();
-      smtpReady = true;
-      logger.info('System SMTP connection verified');
-      return;
-    } catch (err: any) {
-      logger.warn({ attempt: i+1, error: err.message }, 'System SMTP verification attempt failed');
-      if (i < retries-1) await new Promise(r => setTimeout(r, 1000));
-    }
-  }
-  logger.warn('System SMTP verification skipped');
+function getSender(): { name?: string; email: string } {
+  const email = process.env.BREVO_FROM_EMAIL || '';
+  const name  = process.env.BREVO_FROM_NAME || 'Reachify';
+  return { name, email };
 }
-verifySystemSmtp().catch(() => {});
 
 // ─── Attachment type ──────────────────────────────────────────────────────────
 
@@ -72,8 +49,6 @@ export interface EmailAttachment {
 export interface SendEmailOptions {
   emailId?:     string;
   backendUrl?:  string;
-  transporter?: Transporter; // custom SMTP (for rotation)
-  fromAddress?: string;      // custom from (for rotation)
   attachment?:  EmailAttachment;
 }
 
@@ -87,16 +62,9 @@ export async function sendEmail(
 ): Promise<void> {
   const {
     emailId,
-    backendUrl  = process.env.BACKEND_URL || 'http://localhost:3001',
-    transporter = systemTransporter,
-    fromAddress = process.env.SMTP_FROM || `Reachify <${process.env.SMTP_USER}>`,
+    backendUrl = process.env.BACKEND_URL || 'http://localhost:3001',
     attachment
   } = options;
-
-  // Ensure system SMTP is ready when using default transporter
-  if (transporter === systemTransporter && !smtpReady) {
-    await verifySystemSmtp();
-  }
 
   const trackingPixel = emailId
     ? `<img src="${backendUrl}/track/open/${emailId}" width="1" height="1" style="display:none" alt="" />`
@@ -109,32 +77,47 @@ export async function sendEmail(
        </div>`
     : '';
 
-  try {
-    const info = await transporter.sendMail({
-      from:    fromAddress,
-      to,
-      subject,
-      text:    body.replace(/<[^>]*>/g, '') + (emailId ? `\n\nUnsubscribe: ${backendUrl}/track/unsubscribe/${emailId}` : ''),
-      html:    `<!DOCTYPE html><html><head><meta charset="utf-8">
+  const trackedBody = emailId ? addClickTracking(body, emailId, backendUrl) : body;
+
+  const payload = {
+    sender: getSender(),
+    to: [{ email: to }],
+    subject,
+    textContent: body.replace(/<[^>]*>/g, '') + (emailId ? `\n\nUnsubscribe: ${backendUrl}/track/unsubscribe/${emailId}` : ''),
+    htmlContent: `<!DOCTYPE html><html><head><meta charset="utf-8">
                 <meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
                 <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">
                   ${trackingPixel}
-                  ${body}
+                  ${trackedBody}
                   ${unsubscribeFooter}
                 </body></html>`,
-      attachments: attachment
-        ? [{ filename: attachment.filename, content: attachment.content, contentType: attachment.contentType }]
-        : []
+    ...(attachment
+      ? { attachment: [{ name: attachment.filename, content: attachment.content.toString('base64') }] }
+      : {})
+  };
+
+  try {
+    const res = await fetch(BREVO_API_URL, {
+      method: 'POST',
+      headers: {
+        'api-key': process.env.BREVO_API_KEY || '',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
     });
 
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Brevo API error ${res.status}: ${errBody || res.statusText}`);
+    }
+
+    const info = await res.json().catch(() => ({} as any));
     logger.info({ messageId: info.messageId, to, subject }, 'Email sent');
-    try { const { incrementMetric } = await import('../utils/metrics'); await incrementMetric('emailsSent'); } catch {}
+    try { await incrementMetric('emailsSent'); } catch {}
   } catch (error: any) {
     logger.error({ error: error.message, to, subject }, 'Email send failed');
-    try { const { incrementMetric } = await import('../utils/metrics'); await incrementMetric('emailsFailed'); } catch {}
+    try { await incrementMetric('emailsFailed'); } catch {}
     throw new Error(error.message);
   }
 }
-
-process.on('SIGTERM', () => { systemTransporter.close(); });
-process.on('SIGINT',  () => { systemTransporter.close(); });
