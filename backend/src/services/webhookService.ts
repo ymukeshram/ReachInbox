@@ -36,6 +36,7 @@ export async function sendWebhook(payload: WebhookPayload): Promise<void> {
 
     await axios.post(webhookUrl, payload, {
       timeout: 5000,
+      maxRedirects: 0, // don't follow redirects — a malicious endpoint could redirect to an internal address, bypassing the SSRF check applied when the URL was saved
       headers: {
         'Content-Type': 'application/json',
         'X-Reachify-Event': payload.event,

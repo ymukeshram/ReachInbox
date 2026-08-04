@@ -132,7 +132,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Redis-backed session store with proper configuration
-app.use(session({
+// Stored in a variable so the same middleware instance can be shared with
+// Socket.IO below, letting WebSocket auth rely on the real session cookie
+// instead of a client-supplied value.
+const sessionMiddleware = session({
   store: new RedisStore({ client: redis }),
   secret: process.env.SESSION_SECRET!, // validateEnv() guarantees this is always set
   resave: false,
@@ -147,7 +150,8 @@ app.use(session({
     domain: isProd ? undefined : undefined // Let browser handle domain
   },
   name: 'sessionId' // Custom session cookie name
-}));
+});
+app.use(sessionMiddleware);
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -309,13 +313,22 @@ app.get('/metrics', async (_req, res) => {
   }
 });
 
-// WebSocket authentication
+// Share the Express session with Socket.IO so WebSocket connections are
+// authenticated against the real logged-in user rather than trusting a
+// client-supplied userId (which any client could set to any value).
+const wrapMiddleware = (mw: express.RequestHandler) =>
+  (socket: any, next: (err?: any) => void) => mw(socket.request, {} as express.Response, next);
+
+io.use(wrapMiddleware(sessionMiddleware));
+io.use(wrapMiddleware(passport.initialize()));
+io.use(wrapMiddleware(passport.session()));
+
 io.use((socket, next) => {
-  const userId = socket.handshake.auth.userId;
-  if (!userId) {
+  const user = (socket.request as any).user;
+  if (!user?.id) {
     return next(new Error('Authentication required'));
   }
-  socket.data.userId = userId;
+  socket.data.userId = user.id;
   next();
 });
 

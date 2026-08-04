@@ -118,6 +118,16 @@ router.post('/:id/enroll', isAuthenticated, async (req: Request, res: Response) 
     const seqRes = await pool.query('SELECT * FROM sequences WHERE id=$1 AND user_id=$2', [seqId, user.id]);
     if (seqRes.rows.length === 0) return res.status(404).json({ error: 'Sequence not found' });
 
+    // Verify the caller actually owns the referenced email — otherwise a
+    // malicious sourceEmailId could later leak another user's email subject
+    // and open status through the enrollments list below.
+    let verifiedSourceEmailId: string | null = null;
+    if (sourceEmailId) {
+      const emailRes = await pool.query('SELECT id FROM emails WHERE id=$1 AND user_id=$2', [sourceEmailId, user.id]);
+      if (emailRes.rows.length === 0) return res.status(403).json({ error: 'sourceEmailId does not belong to you' });
+      verifiedSourceEmailId = sourceEmailId;
+    }
+
     const firstStep = await pool.query(
       'SELECT * FROM sequence_steps WHERE sequence_id=$1 AND step_number=1',
       [seqId]
@@ -134,7 +144,7 @@ router.post('/:id/enroll', isAuthenticated, async (req: Request, res: Response) 
        VALUES ($1,$2,$3,$4,$5,0,$6)
        ON CONFLICT (sequence_id, recipient_email) DO NOTHING
        RETURNING id`,
-      [enrollId, seqId, user.id, recipientEmail.toLowerCase(), sourceEmailId||null, nextCheckAt]
+      [enrollId, seqId, user.id, recipientEmail.toLowerCase(), verifiedSourceEmailId, nextCheckAt]
     );
 
     // ON CONFLICT DO NOTHING means the recipient is already enrolled — return existing state
@@ -170,11 +180,11 @@ router.get('/:id/enrollments', isAuthenticated, async (req: Request, res: Respon
       pool.query(
         `SELECT se.*, e.subject AS source_subject, e.sent_at AS source_sent_at, e.opened_at
          FROM sequence_enrollments se
-         LEFT JOIN emails e ON e.id = se.source_email_id
+         LEFT JOIN emails e ON e.id = se.source_email_id AND e.user_id = $4
          WHERE se.sequence_id=$1
          ORDER BY se.created_at DESC
          LIMIT $2 OFFSET $3`,
-        [seqId, limit, (page-1)*limit]
+        [seqId, limit, (page-1)*limit, user.id]
       ),
       pool.query('SELECT COUNT(*) FROM sequence_enrollments WHERE sequence_id=$1',[seqId])
     ]);

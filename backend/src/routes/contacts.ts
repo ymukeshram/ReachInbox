@@ -121,39 +121,90 @@ router.post('/import', isAuthenticated, upload.single('file'), async (req: Reque
     let imported = 0;
     let skipped  = 0;
 
-    for (let i = 0; i < emails.length; i++) {
-      const email = emails[i];
-      const row   = data[i];
+    // Inserted in batches (instead of one round-trip per row) so large CSVs don't
+    // risk exceeding the request timeout. A batch that errors falls back to
+    // per-row inserts so one malformed row doesn't sink its whole batch.
+    const BATCH_SIZE = 200;
+
+    const customFieldsFor = (row: any) =>
+      JSON.stringify({ ...row, email: undefined, first_name: undefined, last_name: undefined, name: undefined });
+
+    const attachTags = async (contactIds: string[]) => {
+      if (tagIds.length === 0 || contactIds.length === 0) return;
+      const values: string[] = [];
+      const params: any[] = [];
+      for (const contactId of contactIds) {
+        for (const tagId of tagIds) {
+          const base = params.length;
+          values.push(`($${base + 1},$${base + 2})`);
+          params.push(contactId, tagId);
+        }
+      }
+      await pool.query(
+        `INSERT INTO contact_tags (contact_id, tag_id) VALUES ${values.join(',')} ON CONFLICT DO NOTHING`,
+        params
+      ).catch(() => {});
+    };
+
+    const insertRow = async (email: string, row: any) => {
+      const result = await pool.query(
+        `INSERT INTO contacts (id, user_id, email, first_name, last_name, custom_fields)
+         VALUES ($1,$2,$3,$4,$5,$6)
+         ON CONFLICT (user_id, email) DO UPDATE
+           SET first_name = COALESCE(NULLIF(EXCLUDED.first_name,''), contacts.first_name),
+               last_name  = COALESCE(NULLIF(EXCLUDED.last_name,''),  contacts.last_name),
+               custom_fields = COALESCE(contacts.custom_fields, '{}'::jsonb) || EXCLUDED.custom_fields,
+               updated_at = NOW()
+         RETURNING id`,
+        [uuidv4(), user.id, email, row.first_name || row.name || '', row.last_name || '', customFieldsFor(row)]
+      );
+      return result.rows[0].id;
+    };
+
+    for (let start = 0; start < emails.length; start += BATCH_SIZE) {
+      const batchEmails = emails.slice(start, start + BATCH_SIZE);
+      const batchData   = data.slice(start, start + BATCH_SIZE);
+
+      const values: string[] = [];
+      const params: any[] = [];
+      for (let i = 0; i < batchEmails.length; i++) {
+        const row = batchData[i];
+        const base = params.length;
+        values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6})`);
+        params.push(
+          uuidv4(), user.id, batchEmails[i],
+          row.first_name || row.name || '', row.last_name || '',
+          customFieldsFor(row)
+        );
+      }
 
       try {
         const result = await pool.query(
           `INSERT INTO contacts (id, user_id, email, first_name, last_name, custom_fields)
-           VALUES ($1,$2,$3,$4,$5,$6)
+           VALUES ${values.join(',')}
            ON CONFLICT (user_id, email) DO UPDATE
              SET first_name = COALESCE(NULLIF(EXCLUDED.first_name,''), contacts.first_name),
                  last_name  = COALESCE(NULLIF(EXCLUDED.last_name,''),  contacts.last_name),
                  custom_fields = COALESCE(contacts.custom_fields, '{}'::jsonb) || EXCLUDED.custom_fields,
                  updated_at = NOW()
            RETURNING id`,
-          [uuidv4(), user.id, email,
-           row.first_name||row.name||'', row.last_name||'',
-           JSON.stringify({ ...row, email: undefined, first_name: undefined, last_name: undefined, name: undefined })]
+          params
         );
 
-        const contactId = result.rows[0].id;
-
-        // Attach tags
-        for (const tagId of tagIds) {
-          await pool.query(
-            `INSERT INTO contact_tags (contact_id, tag_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
-            [contactId, tagId]
-          ).catch(() => {});
-        }
-
-        imported++;
+        imported += result.rows.length;
+        await attachTags(result.rows.map((r: any) => r.id));
       } catch (err: any) {
-        logger.warn({ email, error: err.message }, 'Contact import row skipped');
-        skipped++;
+        logger.warn({ error: err.message, batchStart: start }, 'Contact import batch failed, retrying rows individually');
+        for (let i = 0; i < batchEmails.length; i++) {
+          try {
+            const contactId = await insertRow(batchEmails[i], batchData[i]);
+            await attachTags([contactId]);
+            imported++;
+          } catch (rowErr: any) {
+            logger.warn({ email: batchEmails[i], error: rowErr.message }, 'Contact import row skipped');
+            skipped++;
+          }
+        }
       }
     }
 

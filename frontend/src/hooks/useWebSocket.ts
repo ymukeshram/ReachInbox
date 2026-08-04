@@ -16,7 +16,7 @@ export function useWebSocket(userId: string | null, onEmailUpdate: (data: any) =
     if (!userId) return;
 
     const socket = io(API_URL, {
-      auth: { userId },
+      withCredentials: true, // send the session cookie so the server can authenticate the socket
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
