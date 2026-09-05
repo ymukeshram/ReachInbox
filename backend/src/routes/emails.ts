@@ -11,8 +11,15 @@ import { logger } from '../utils/logger';
 import { checkEmailLimit, requirePermission, ROLE_PERMISSIONS, getUserRole } from '../middleware/rbac';
 import { getPagination } from '../utils/pagination';
 import { toCsv } from '../utils/csv';
+import { esClient } from '../config/elasticsearch';
 
-const MAX_EMAILS_PER_HOUR  = parseInt(process.env.MAX_EMAILS_PER_HOUR || '200');
+const MAX_EMAILS_PER_HOUR  = parseInt(
+  process.env.MAX_EMAILS_PER_HOUR_PER_SENDER || process.env.MAX_EMAILS_PER_HOUR || '200'
+);
+const MIN_DELAY_BETWEEN_EMAILS_MS = Math.max(
+  0,
+  parseInt(process.env.MIN_DELAY_BETWEEN_EMAILS_MS || '0')
+);
 const MAX_FILE_SIZE         = 10 * 1024 * 1024; // 10 MB (covers CSV + attachment)
 const MAX_ATTACHMENT_SIZE   = 5 * 1024 * 1024;  // 5 MB max attachment
 const MAX_EMAILS_PER_BATCH  = 1000;
@@ -97,8 +104,18 @@ router.post(
       const rolePermissions = ROLE_PERMISSIONS[userRole as keyof typeof ROLE_PERMISSIONS];
       const roleHourlyCap = rolePermissions.maxEmailsPerHour === -1 ? MAX_EMAILS_PER_HOUR : rolePermissions.maxEmailsPerHour;
 
-      const delayMs = Math.max(1000, parseInt(delayBetweenEmails || '5') * 1000);
-      const limit   = Math.min(parseInt(hourlyLimit || '200'), MAX_EMAILS_PER_HOUR, roleHourlyCap);
+      const requestedDelaySeconds = parseInt(delayBetweenEmails || '0');
+      const requestedHourlyLimit = parseInt(hourlyLimit || '0');
+      const delayMs = Math.max(
+        1000,
+        requestedDelaySeconds > 0 ? requestedDelaySeconds * 1000 : 5000,
+        MIN_DELAY_BETWEEN_EMAILS_MS
+      );
+      const limit = Math.min(
+        requestedHourlyLimit > 0 ? requestedHourlyLimit : MAX_EMAILS_PER_HOUR,
+        MAX_EMAILS_PER_HOUR,
+        roleHourlyCap
+      );
 
       const { emails, data, skipped, invalidEmails } = parseSpreadsheet(
         csvFile.buffer, csvFile.mimetype, csvFile.originalname
@@ -175,7 +192,15 @@ router.post(
 
         jobsToQueue.push({
           id: emailId,
-          data: { emailId, recipientEmail: email, subject: persSubject, body: persBody, userId: user.id, hourlyLimit: limit },
+          data: {
+            emailId,
+            recipientEmail: email,
+            subject: persSubject,
+            body: persBody,
+            userId: user.id,
+            hourlyLimit: limit,
+            delayBetweenEmailsMs: delayMs
+          },
           delay
         });
       });
@@ -273,6 +298,28 @@ router.post(
           jobsToQueue.map(j => emailQueue.add('send-email', j.data, { delay: j.delay, jobId: j.id }))
         );
         await client.query('COMMIT');
+        
+        // Index scheduled emails into Elasticsearch
+        try {
+          const body = jobsToQueue.flatMap(j => [
+            { index: { _index: 'email_logs', _id: j.id } },
+            { 
+              emailId: j.id, 
+              userId: user.id, 
+              recipientEmail: j.data.recipientEmail, 
+              subject: j.data.subject, 
+              body: j.data.body, 
+              status: 'scheduled', 
+              timestamp: new Date().toISOString() 
+            }
+          ]);
+          if (body.length > 0) {
+            await esClient.bulk({ refresh: true, operations: body });
+          }
+        } catch (esError) {
+          logger.error({ error: esError }, 'Failed to index scheduled emails to Elasticsearch');
+        }
+
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -375,6 +422,39 @@ router.get('/sent', isAuthenticated, async (req, res) => {
   } catch (err: any) {
     logger.error({ error: err.message }, 'Failed to fetch sent emails');
     res.status(500).json({ error: 'Failed to fetch sent emails' });
+  }
+});
+
+// ─── Search logs via Elasticsearch ──────────────────────────────────────────
+
+router.get('/search', isAuthenticated, async (req, res) => {
+  try {
+    const user = req.user as any;
+    const query = req.query.q as string || '';
+    if (!query) return res.json({ data: [] });
+
+    const result = await esClient.search({
+      index: 'email_logs',
+      query: {
+        bool: {
+          must: [
+            { term: { userId: user.id } },
+            {
+              multi_match: {
+                query,
+                fields: ['subject', 'body', 'recipientEmail']
+              }
+            }
+          ]
+        }
+      }
+    });
+
+    const hits = result.hits.hits.map((h: any) => h._source);
+    res.json({ data: hits });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'Elasticsearch query failed');
+    res.status(500).json({ error: 'Search failed' });
   }
 });
 

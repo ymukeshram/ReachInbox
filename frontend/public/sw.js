@@ -1,4 +1,4 @@
-const CACHE_NAME = 'reachify-v4';
+const CACHE_NAME = 'ReachInbox-v4';
 const STATIC_ASSETS = ['/', '/favicon.svg'];
 
 self.addEventListener('install', (event) => {

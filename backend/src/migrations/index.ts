@@ -324,6 +324,30 @@ const migrations: Migration[] = [
     down: async () => {
       // Irreversible — the custom-SMTP feature has been removed from the app
     }
+  },
+  {
+    version: 8,
+    name: 'add_slack_oauth_support',
+    up: async (pool: Pool) => {
+      await pool.query(`
+        ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS slack_access_token TEXT,
+        ADD COLUMN IF NOT EXISTS slack_team_id VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS slack_team_name VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT,
+        ADD COLUMN IF NOT EXISTS slack_connected_at TIMESTAMP
+      `);
+    },
+    down: async (pool: Pool) => {
+      await pool.query(`
+        ALTER TABLE users
+        DROP COLUMN IF EXISTS slack_access_token,
+        DROP COLUMN IF EXISTS slack_team_id,
+        DROP COLUMN IF EXISTS slack_team_name,
+        DROP COLUMN IF EXISTS slack_webhook_url,
+        DROP COLUMN IF EXISTS slack_connected_at
+      `);
+    }
   }
 ];
 

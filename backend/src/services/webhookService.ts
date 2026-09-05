@@ -58,6 +58,23 @@ export async function sendWebhook(payload: WebhookPayload): Promise<void> {
   }
 }
 
+export async function sendRateLimitAlert(userId: string, emailId: string, limit: number): Promise<void> {
+  try {
+    const result = await pool.query(
+      'SELECT COALESCE(slack_webhook_url, webhook_url) AS webhook_url FROM users WHERE id=$1 AND (slack_webhook_url IS NOT NULL OR webhook_url IS NOT NULL)',
+      [userId]
+    );
+    const webhookUrl = result.rows[0]?.webhook_url;
+    if (!webhookUrl) return;
+
+    await axios.post(webhookUrl, {
+      text: `Reachify paused email job ${emailId}: the hourly sender limit of ${limit} was reached. It will resume in the next hour.`
+    }, { timeout: 5000, maxRedirects: 0 });
+  } catch (error: any) {
+    logger.warn({ error: error.message, userId, emailId }, 'Rate-limit Slack notification failed');
+  }
+}
+
 function generateSignature(payload: WebhookPayload, secret: string): string {
   return crypto
     .createHmac('sha256', secret)

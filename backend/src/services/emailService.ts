@@ -2,6 +2,7 @@ import { logger } from '../utils/logger';
 import { addClickTracking } from '../utils/emailTracking';
 import { incrementMetric } from '../utils/metrics';
 import dotenv from 'dotenv';
+import * as nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -28,14 +29,41 @@ export function classifyBounce(errorMessage: string): BounceType {
   return 'unknown';
 }
 
-// ─── Brevo transactional email API ───────────────────────────────────────────
+// ─── Nodemailer Setup ──────────────────────────────────────────────────────────
 
-const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
+let transporter: nodemailer.Transporter | null = null;
+let defaultSender = process.env.SMTP_FROM_EMAIL || 'reachinbox@ethereal.email';
 
-function getSender(): { name?: string; email: string } {
-  const email = process.env.BREVO_FROM_EMAIL || '';
-  const name  = process.env.BREVO_FROM_NAME || 'Reachify';
-  return { name, email };
+async function getTransporter() {
+  if (transporter) return transporter;
+
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    logger.info('Using custom SMTP configuration');
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_PORT === '465',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+  } else {
+    logger.info('SMTP credentials not found. Falling back to Ethereal Email.');
+    const testAccount = await nodemailer.createTestAccount();
+    transporter = nodemailer.createTransport({
+      host: testAccount.smtp.host,
+      port: testAccount.smtp.port,
+      secure: testAccount.smtp.secure,
+      auth: {
+        user: testAccount.user,
+        pass: testAccount.pass,
+      },
+    });
+    defaultSender = testAccount.user;
+    logger.info({ user: testAccount.user, pass: testAccount.pass }, 'Ethereal test account created');
+  }
+  return transporter;
 }
 
 // ─── Attachment type ──────────────────────────────────────────────────────────
@@ -79,41 +107,39 @@ export async function sendEmail(
 
   const trackedBody = emailId ? addClickTracking(body, emailId, backendUrl) : body;
 
-  const payload = {
-    sender: getSender(),
-    to: [{ email: to }],
+  const htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+              <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">
+                ${trackingPixel}
+                ${trackedBody}
+                ${unsubscribeFooter}
+              </body></html>`;
+              
+  const textContent = body.replace(/<[^>]*>/g, '') + (emailId ? `\n\nUnsubscribe: ${backendUrl}/track/unsubscribe/${emailId}` : '');
+
+  const mailOptions: nodemailer.SendMailOptions = {
+    from: `"${process.env.SMTP_FROM_NAME || 'ReachInbox'}" <${defaultSender}>`,
+    to,
     subject,
-    textContent: body.replace(/<[^>]*>/g, '') + (emailId ? `\n\nUnsubscribe: ${backendUrl}/track/unsubscribe/${emailId}` : ''),
-    htmlContent: `<!DOCTYPE html><html><head><meta charset="utf-8">
-                <meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-                <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;">
-                  ${trackingPixel}
-                  ${trackedBody}
-                  ${unsubscribeFooter}
-                </body></html>`,
-    ...(attachment
-      ? { attachment: [{ name: attachment.filename, content: attachment.content.toString('base64') }] }
-      : {})
+    text: textContent,
+    html: htmlContent,
+    attachments: attachment ? [{
+      filename: attachment.filename,
+      content: attachment.content,
+      contentType: attachment.contentType
+    }] : []
   };
 
   try {
-    const res = await fetch(BREVO_API_URL, {
-      method: 'POST',
-      headers: {
-        'api-key': process.env.BREVO_API_KEY || '',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '');
-      throw new Error(`Brevo API error ${res.status}: ${errBody || res.statusText}`);
-    }
-
-    const info = await res.json().catch(() => ({} as any));
+    const t = await getTransporter();
+    const info = await t.sendMail(mailOptions);
     logger.info({ messageId: info.messageId, to, subject }, 'Email sent');
+    
+    // If using ethereal, log the preview URL
+    if (info.messageId && defaultSender.includes('ethereal')) {
+      logger.info({ previewUrl: nodemailer.getTestMessageUrl(info) }, 'Ethereal Preview URL');
+    }
+    
     try { await incrementMetric('emailsSent'); } catch {}
   } catch (error: any) {
     logger.error({ error: error.message, to, subject }, 'Email send failed');

@@ -2,7 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { scheduleEmails, checkSpamScore, getSequences } from '../api';
 import { friendlyError } from '../utils/friendlyError';
 
-interface Props { onClose: () => void; onSuccess: () => void; initialTemplate?: { subject: string; body: string } | null; }
+interface Props {
+  onClose: () => void;
+  onSuccess: () => void;
+  initialTemplate?: { subject: string; body: string } | null;
+  userEmail?: string;
+}
 
 const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
 const ALLOWED_ATTACHMENTS = [
@@ -11,68 +16,50 @@ const ALLOWED_ATTACHMENTS = [
   'image/png', 'image/jpeg'
 ];
 
-function SpamBadge({ rating }: { rating: 'safe' | 'caution' | 'risky' }) {
-  const map = {
-    safe:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    caution: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-    risky:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  };
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${map[rating]}`}>
-      {rating === 'safe' ? '✓ Low spam risk' : rating === 'caution' ? '⚠ Caution' : '✗ High spam risk'}
-    </span>
-  );
-}
-
-function ComposeModal({ onClose, onSuccess, initialTemplate }: Props) {
+export default function ComposeModal({ onClose, onSuccess, initialTemplate, userEmail }: Props) {
   const [subject, setSubject]             = useState(initialTemplate?.subject ?? '');
   const [body, setBody]                   = useState(initialTemplate?.body ?? '');
   const [csvFile, setCsvFile]             = useState<File | null>(null);
   const [attachmentFile, setAttachment]   = useState<File | null>(null);
-  const [emailCount, setEmailCount]       = useState(0);
+  const [emails, setEmails]               = useState<string[]>([]);
+  
   const [startTime, setStartTime]         = useState('');
-  const [delayBetweenEmails, setDelay]    = useState('10');
-  const [hourlyLimit, setHourlyLimit]     = useState('200');
-  const [campaignName, setCampaignName]   = useState('');
-  const [sequenceId, setSequenceId]       = useState('');
-  const [sequences, setSequences]         = useState<any[]>([]);
+  const [delayBetweenEmails, setDelay]    = useState('00');
+  const [hourlyLimit, setHourlyLimit]     = useState('00');
+  
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState('');
   const [successInfo, setSuccessInfo]     = useState<any>(null);
   const [isDragging, setIsDragging]       = useState(false);
-  const [spamResult, setSpamResult]       = useState<{ score: number; rating: string; issues: string[] } | null>(null);
-  const spamTimer                         = useRef<ReturnType<typeof setTimeout>>();
+  
+  const [showSendLater, setShowSendLater] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
-  // Load sequences for follow-up selection
   useEffect(() => {
-    getSequences().then(r => setSequences(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+    if (editorRef.current && initialTemplate?.body) {
+      editorRef.current.innerHTML = initialTemplate.body;
+    }
   }, []);
 
-  // Debounced spam score check
-  useEffect(() => {
-    clearTimeout(spamTimer.current);
-    if (!subject || !body) { setSpamResult(null); return; }
-    spamTimer.current = setTimeout(async () => {
-      try {
-        const r = await checkSpamScore(subject, body);
-        setSpamResult(r.data);
-      } catch {}
-    }, 800);
-    return () => clearTimeout(spamTimer.current);
-  }, [subject, body]);
+  const applyFormat = useCallback((command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    if (editorRef.current) setBody(editorRef.current.innerHTML);
+  }, []);
 
   const processFile = useCallback((f: File) => {
     setCsvFile(f);
     const isExcel = f.name.endsWith('.xlsx') || f.name.endsWith('.xls');
     if (isExcel) {
-      // Can't count emails client-side from binary xlsx — show placeholder
-      setEmailCount(0);
+      setEmails(['Parsed via Excel backend...']);
       return;
     }
     const reader = new FileReader();
     reader.onload = ev => {
       const matches = (ev.target?.result as string).match(EMAIL_REGEX) || [];
-      setEmailCount(new Set(matches.map(m => m.toLowerCase())).size);
+      setEmails(Array.from(new Set(matches.map(m => m.toLowerCase()))));
     };
     reader.readAsText(f);
   }, []);
@@ -91,16 +78,6 @@ function ComposeModal({ onClose, onSuccess, initialTemplate }: Props) {
     setError('');
   }, []);
 
-  const handleDragOver  = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); }, []);
-  const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); }, []);
-  const handleDrop      = useCallback((e: React.DragEvent) => {
-    e.preventDefault(); setIsDragging(false);
-    const f = e.dataTransfer.files?.[0];
-    const ok = f && (f.name.endsWith('.csv') || f.name.endsWith('.txt') || f.name.endsWith('.xlsx') || f.name.endsWith('.xls'));
-    if (ok) processFile(f);
-    else { setError('Please drop a CSV, Excel (.xlsx), or TXT file'); setTimeout(() => setError(''), 3000); }
-  }, [processFile]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!csvFile || loading) return;
@@ -113,8 +90,6 @@ function ComposeModal({ onClose, onSuccess, initialTemplate }: Props) {
     fd.append('startTime',          startTime);
     fd.append('delayBetweenEmails', delayBetweenEmails);
     fd.append('hourlyLimit',        hourlyLimit);
-    if (campaignName.trim()) fd.append('campaignName', campaignName.trim());
-    if (sequenceId)          fd.append('sequenceId',   sequenceId);
     if (attachmentFile)      fd.append('attachment',   attachmentFile);
 
     try {
@@ -130,161 +105,229 @@ function ComposeModal({ onClose, onSuccess, initialTemplate }: Props) {
     }
   };
 
-  const inp = 'w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition';
+  const visibleEmails = emails.slice(0, 3);
+  const remainingEmails = emails.length > 3 ? emails.length - 3 : 0;
+
+  const setTomorrowAt = (hour?: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    date.setHours(hour ?? 9, 0, 0, 0);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    setStartTime(`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`);
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
-        {/* Header */}
-        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-800 z-10">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Compose Email</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl shadow-2xl w-[1040px] flex flex-col relative" style={{ maxHeight: '95vh' }}>
+        
+        {/* Navigation Header */}
+        <div className="h-[54px] px-6 border-b border-gray-200 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-4 cursor-pointer" onClick={onClose}>
+            <span className="text-gray-500 hover:text-gray-900 font-medium">← Compose New Email</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <button type="button" className="compose-icon-button" aria-label="Add attachment" onClick={() => document.getElementById('compose-attachment')?.click()}>
+              <PaperclipIcon />
+              {attachmentFile && <span className="attachment-count">1</span>}
+               <input id="compose-attachment" type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={handleAttachmentChange} className="hidden" />
+            </button>
+            <button type="button" className="compose-icon-button" aria-label="Open send later picker" onClick={() => setShowSendLater(true)}><ClockIcon /></button>
+            <button type="button" onClick={() => setShowSendLater(true)}
+              className="border border-emerald-500 text-emerald-600 rounded-full px-4 py-1.5 font-medium hover:bg-emerald-50 transition">
+              Send Later
+            </button>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {error && (
-            <div className="px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-lg text-sm">{error}</div>
-          )}
-          {successInfo && (
-            <div className="px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm space-y-1">
-              <p className="font-semibold text-green-800 dark:text-green-300">Scheduled {successInfo.count.toLocaleString()} email{successInfo.count!==1?'s':''}!</p>
-              {successInfo.skipped > 0  && <p className="text-green-700 dark:text-green-400">{successInfo.skipped} duplicate{successInfo.skipped!==1?'s':''} removed</p>}
-              {successInfo.filtered > 0 && <p className="text-yellow-700 dark:text-yellow-400">{successInfo.filtered} filtered (unsubscribed / hard bounce)</p>}
-              {successInfo.invalidEmails?.length > 0 && <p className="text-orange-700 dark:text-orange-400">{successInfo.invalidEmails.length} invalid email{successInfo.invalidEmails.length!==1?'s':''}</p>}
-              {successInfo.spamScore && <p className="text-gray-600 dark:text-gray-400">Spam score: {successInfo.spamScore.score}/100 — {successInfo.spamScore.rating}</p>}
-            </div>
-          )}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto flex flex-col">
+          {error && <div className="px-6 py-2 bg-red-50 text-red-600 text-sm border-b border-red-100">{error}</div>}
+          {successInfo && <div className="px-6 py-2 bg-green-50 text-green-600 text-sm border-b border-green-100">Successfully scheduled!</div>}
 
-          {/* Subject */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Subject</label>
-              {spamResult && <SpamBadge rating={spamResult.rating as any} />}
-            </div>
-            <input type="text" value={subject} onChange={e => setSubject(e.target.value)}
-              className={inp} placeholder="Subject — use {{name}}, {{company}} for personalisation" required />
-            {spamResult && spamResult.issues.length > 0 && (
-              <ul className="mt-1 text-xs text-yellow-600 dark:text-yellow-400 space-y-0.5">
-                {spamResult.issues.slice(0,3).map((issue, i) => <li key={i}>• {issue}</li>)}
-              </ul>
-            )}
-          </div>
-
-          {/* Body */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Body</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)}
-              rows={6} className={inp} placeholder="Hi {{first_name}},&#10;&#10;I saw your role at {{company}}..." required />
-            <p className="mt-1 text-xs text-gray-400">Personalisation fields auto-filled from your CSV/Excel columns: {`{{first_name}} {{last_name}} {{company}} {{role}}`}</p>
-          </div>
-
-          {/* Campaign + Sequence row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Campaign Name <span className="text-gray-400 font-normal text-xs">(optional)</span></label>
-              <input type="text" value={campaignName} onChange={e => setCampaignName(e.target.value)}
-                className={inp} placeholder="e.g. HR Outreach May 2026" maxLength={255} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Follow-up Sequence <span className="text-gray-400 font-normal text-xs">(optional)</span></label>
-              <select value={sequenceId} onChange={e => setSequenceId(e.target.value)} className={inp}>
-                <option value="">None — send once</option>
-                {sequences.map(s => <option key={s.id} value={s.id}>{s.name} ({s.step_count} steps)</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* File Upload */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Email List (CSV / Excel / TXT)</label>
-            <div
-              onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}
-              className={`relative border-2 border-dashed rounded-lg p-5 text-center transition-all ${isDragging ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'}`}
-            >
-              <input type="file" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required={!csvFile} />
-              <div className="pointer-events-none">
-                <svg className="w-9 h-9 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                {csvFile
-                  ? <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{csvFile.name}</p>
-                  : <p className="text-sm text-gray-600 dark:text-gray-400">Drop CSV, Excel (.xlsx), or TXT — or click to browse</p>}
+          {/* Form Inputs Container */}
+          <div className="bg-white border-b border-gray-200 px-6 py-4 flex flex-col gap-3 shrink-0">
+            {/* From */}
+            <div className="flex items-center border-b border-gray-100 pb-3">
+              <span className="w-16 text-gray-500 font-medium text-sm">From</span>
+              <div className="bg-gray-100 rounded-md px-3 py-1 text-sm text-gray-700 font-medium select-none">
+                {userEmail || 'me@domain.com'}
               </div>
             </div>
-            {csvFile && (csvFile.name.endsWith('.xlsx') || csvFile.name.endsWith('.xls')) && (
-              <p className="mt-1.5 text-sm text-blue-600 dark:text-blue-400 font-medium">
-                Excel file selected — recipient count shown after scheduling
-              </p>
-            )}
-            {emailCount > 0 && (
-              <p className="mt-1.5 text-sm text-green-600 dark:text-green-400 font-medium">
-                {emailCount.toLocaleString()} unique email{emailCount!==1?'s':''} detected
-              </p>
-            )}
+
+            {/* To */}
+            <div className="flex items-center border-b border-gray-100 pb-3">
+              <span className="w-16 text-gray-500 font-medium text-sm">To</span>
+              <div className="flex-1 flex flex-wrap gap-2 items-center">
+                {visibleEmails.map((em, i) => (
+                  <span key={i} className="recipient-chip">{em}</span>
+                ))}
+                {remainingEmails > 0 && (
+                  <span className="recipient-chip">+{remainingEmails}</span>
+                )}
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="text-emerald-600 font-medium text-sm ml-2">
+                  <UploadIcon /> Upload List
+                </button>
+                <input ref={fileInputRef} type="file" accept=".csv,.txt,.xlsx,.xls" onChange={handleFileChange} className="hidden" />
+              </div>
+            </div>
+
+            {/* Subject */}
+            <div className="flex items-center border-b border-gray-100 pb-3">
+              <span className="w-16 text-gray-500 font-medium text-sm">Subject</span>
+              <input type="text" value={subject} onChange={e => setSubject(e.target.value)} 
+                className="flex-1 outline-none text-gray-900 placeholder-gray-400 text-sm" placeholder="Subject" />
+            </div>
+
+            {/* Throttling Inputs */}
+            <div className="flex items-center gap-6 pt-1">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium text-sm">Delay between 2 emails</span>
+                <input type="number" value={delayBetweenEmails} onChange={e => setDelay(e.target.value)}
+                  className="w-16 outline-none border border-gray-200 rounded px-2 py-1 text-sm" placeholder="00" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 font-medium text-sm">Hourly Limit</span>
+                <input type="number" value={hourlyLimit} onChange={e => setHourlyLimit(e.target.value)}
+                  className="w-16 outline-none border border-gray-200 rounded px-2 py-1 text-sm" placeholder="00" />
+              </div>
+            </div>
           </div>
 
-          {/* Attachment */}
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-              Attachment <span className="text-gray-400 font-normal text-xs">(optional — PDF, Word, PNG, JPG · max 5 MB)</span>
-            </label>
-            <div className="flex items-center gap-3">
-              <label className="flex-1 cursor-pointer">
-                <div className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm ${attachmentFile ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
-                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  <span className="truncate">{attachmentFile ? attachmentFile.name : 'Attach file (e.g. resume.pdf)'}</span>
+          {/* Text Editor Container */}
+          <div className="p-6 flex-1 flex flex-col items-center">
+            <div className="w-[1040px] h-[450px] bg-[#FAFAFA] border border-[#E5E7EB] rounded-[10px] p-4 flex flex-col gap-3 max-w-full relative shadow-inner">
+              
+              {/* Formatting Toolbar Pill at Top */}
+              <div className="w-full h-[42px] rounded-full bg-white border border-gray-200 flex items-center px-4 justify-between shrink-0 shadow-sm overflow-x-auto">
+                <div className="flex items-center gap-4 text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <button type="button" aria-label="Undo" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('undo')} className="hover:bg-gray-100 p-1 rounded">↩</button>
+                    <button type="button" aria-label="Redo" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('redo')} className="hover:bg-gray-100 p-1 rounded">↪</button>
+                  </div>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <button type="button" aria-label="Font size" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('fontSize', '3')} className="font-serif font-bold text-sm hover:bg-gray-100 p-1 rounded">TT ⌄</button>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <div className="flex items-center gap-2 font-serif font-bold">
+                    <button type="button" aria-label="Bold" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('bold')} className="hover:bg-gray-100 p-1 rounded">B</button>
+                    <button type="button" aria-label="Italic" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('italic')} className="italic hover:bg-gray-100 p-1 rounded">I</button>
+                    <button type="button" aria-label="Underline" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('underline')} className="underline hover:bg-gray-100 p-1 rounded">U</button>
+                  </div>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <button type="button" aria-label="Align left" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('justifyLeft')} className="hover:bg-gray-100 p-1 rounded"><AlignIcon /></button>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" aria-label="Bulleted list" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('insertUnorderedList')} className="hover:bg-gray-100 p-1 rounded"><BulletListIcon /></button>
+                    <button type="button" aria-label="Numbered list" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('insertOrderedList')} className="hover:bg-gray-100 p-1 rounded"><NumberedListIcon /></button>
+                  </div>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" aria-label="Decrease indent" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('outdent')} className="hover:bg-gray-100 p-1 rounded"><DecreaseIndentIcon /></button>
+                    <button type="button" aria-label="Increase indent" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('indent')} className="hover:bg-gray-100 p-1 rounded"><IncreaseIndentIcon /></button>
+                  </div>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" aria-label="Blockquote" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('formatBlock', 'blockquote')} className="hover:bg-gray-100 p-1 rounded"><QuoteIcon /></button>
+                    <button type="button" aria-label="Code block" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('formatBlock', 'pre')} className="hover:bg-gray-100 p-1 rounded"><BlockIcon /></button>
+                  </div>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <button type="button" aria-label="Strikethrough" onMouseDown={event => event.preventDefault()} onClick={() => applyFormat('strikeThrough')} className="hover:bg-gray-100 p-1 rounded"><StrikeIcon /></button>
+                  <div className="w-px h-5 bg-gray-200"></div>
+                  <button type="button" className="hover:bg-gray-100 p-1 rounded" aria-label="Add attachment" onClick={() => document.getElementById('compose-attachment')?.click()}><PaperclipIcon /></button>
                 </div>
-                <input type="file" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={handleAttachmentChange} className="hidden" />
-              </label>
-              {attachmentFile && (
-                <button type="button" onClick={() => setAttachment(null)} className="text-xs text-red-500 hover:text-red-700">Remove</button>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-gray-400">Attachment sent with every email in this batch (ideal for resumes, brochures, certificates).</p>
-          </div>
+              </div>
 
-          {/* Schedule settings */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Start Time</label>
-              <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} className={inp} required />
+              {/* ContentEditable Typing Area Below Toolbar */}
+              <div
+                ref={editorRef}
+                contentEditable
+                suppressContentEditableWarning
+                onInput={() => {
+                  if (editorRef.current) setBody(editorRef.current.innerHTML);
+                }}
+                className="email-editor w-full flex-1 bg-transparent outline-none text-gray-800 text-sm overflow-y-auto pt-2 px-2"
+                data-placeholder="Type your email content here..."
+                role="textbox"
+                aria-label="Email body"
+              />
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Delay (sec)</label>
-              <input type="number" value={delayBetweenEmails} onChange={e => setDelay(e.target.value)}
-                min="5" max="3600" className={inp} required />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">Hourly Limit</label>
-            <input type="number" value={hourlyLimit} onChange={e => setHourlyLimit(e.target.value)}
-              min="1" max="500" className={inp} required />
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={loading}
-              className="flex-1 bg-blue-600 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2 transition">
-              {loading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {loading ? 'Scheduling...' : `Schedule ${emailCount > 0 ? emailCount.toLocaleString() + ' ' : ''}Email${emailCount !== 1 ? 's' : ''}`}
-            </button>
-            <button type="button" onClick={onClose}
-              className="px-6 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition">
-              Cancel
-            </button>
           </div>
         </form>
+
+        {/* Send Later Popover Modal */}
+        {showSendLater && (
+          <div className="absolute right-6 top-14 w-[320px] h-[366px] bg-white rounded-lg shadow-[0_2px_4px_-2px_rgba(0,0,0,0.1)] border border-[#E5E7EB] flex flex-col z-20">
+            <div className="px-4 py-3 border-b border-gray-100 font-semibold text-gray-800">
+              Send Later
+            </div>
+            <div className="p-4 flex-1 flex flex-col gap-4">
+              <div className="relative">
+                <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} 
+                  className="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none text-gray-700" 
+                  placeholder="Pick date & time" />
+                {!startTime && <div className="absolute right-3 top-2.5 pointer-events-none"><CalendarIcon /></div>}
+              </div>
+              
+              <div className="flex flex-col gap-2 flex-1">
+                <button type="button" onClick={() => setTomorrowAt()} className="text-left text-sm text-gray-600 hover:bg-gray-50 px-3 py-2 rounded">Tomorrow</button>
+                <button type="button" onClick={() => setTomorrowAt(10)} className="text-left text-sm text-gray-600 hover:bg-gray-50 px-3 py-2 rounded">Tomorrow, 10:00 AM</button>
+                <button type="button" onClick={() => setTomorrowAt(11)} className="text-left text-sm text-gray-600 hover:bg-gray-50 px-3 py-2 rounded">Tomorrow, 11:00 AM</button>
+                <button type="button" onClick={() => setTomorrowAt(15)} className="text-left text-sm text-gray-600 hover:bg-gray-50 px-3 py-2 rounded">Tomorrow, 3:00 PM</button>
+              </div>
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 flex justify-end gap-3 items-center">
+              <button type="button" onClick={() => setShowSendLater(false)} className="text-gray-500 hover:text-gray-700 text-sm font-medium">Cancel</button>
+              <button type="button" onClick={(e) => { setShowSendLater(false); handleSubmit(e as any); }} className="border border-emerald-500 text-emerald-600 rounded-full px-4 py-1 text-sm font-medium hover:bg-emerald-50 transition">Done</button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export default ComposeModal;
+function PaperclipIcon() {
+  return <svg aria-hidden="true" className="compose-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="m20.5 11.5-8.6 8.6a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 1 1 5 5l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" /></svg>;
+}
+
+function ClockIcon() {
+  return <svg aria-hidden="true" className="compose-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
+}
+
+function CalendarIcon() {
+  return <svg aria-hidden="true" className="calendar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2" /><path d="M7 3.5v3M17 3.5v3M3.5 9h17" /></svg>;
+}
+
+function UploadIcon() {
+  return <svg aria-hidden="true" className="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16V4M8 8l4-4 4 4M5 14v5h14v-5" /></svg>;
+}
+
+function AlignIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 6h16M4 10h12M4 14h16M4 18h10" /></svg>;
+}
+
+function BulletListIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="5" cy="7" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="17" r="1" fill="currentColor"/><path d="M10 7h10M10 12h10M10 17h10" /></svg>;
+}
+
+function NumberedListIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M10 7h10M10 12h10M10 17h10" /><path d="M4.5 6.5h1v3M4 9.5h2M4 14c0-1 2-1 2 0 0 .7-2 1.5-2 2.5h2" /></svg>;
+}
+
+function DecreaseIndentIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 9l-3 3 3 3" /></svg>;
+}
+
+function IncreaseIndentIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4 9l3 3-3 3" /></svg>;
+}
+
+function QuoteIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="currentColor"><path d="M4 6h6v6H6v6H3v-6c0-3.3.3-4.5 1-6Zm10 0h6v6h-4v6h-3v-6c0-3.3.3-4.5 1-6Z" /></svg>;
+}
+
+function BlockIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5" /></svg>;
+}
+
+function StrikeIcon() {
+  return <svg aria-hidden="true" className="toolbar-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M5 12h14M8 8c.3-2 2-3 4-3 2.4 0 4 1.2 4 3M16 16c-.3 2-2 3-4 3-2.4 0-4-1.2-4-3" /></svg>;
+}

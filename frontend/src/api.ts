@@ -43,7 +43,7 @@ api.interceptors.response.use(
   }
 );
 
-export const getUser             = () => api.get('/auth/user');
+export const getUser             = () => api.get('/auth/user', { timeout: 5_000 });
 export const logout              = () => api.post('/auth/logout');
 
 export const getSubscription     = () => api.get('/api/payment/subscription');
@@ -53,6 +53,9 @@ export const getPermissions      = () => api.get('/api/emails/permissions');
 export const getWebhookConfig    = ()                     => api.get('/auth/webhook');
 export const saveWebhookConfig   = (webhookUrl: string)   => api.post('/auth/webhook', { webhookUrl });
 export const regenerateWebhookSecret = ()                 => api.post('/auth/webhook/regenerate-secret');
+export const getSlackStatus      = ()                     => api.get('/api/slack/status');
+export const disconnectSlack     = ()                     => api.post('/api/slack/disconnect');
+export const getSlackConnectUrl  = ()                     => `${import.meta.env.VITE_API_URL || ''}/api/slack/connect`;
 
 export const scheduleEmails      = (formData: FormData) =>
   api.post('/api/emails/schedule', formData, { headers: { 'Content-Type': 'multipart/form-data' } });

@@ -13,7 +13,7 @@ function TopProgressBar() {
         active ? 'opacity-100' : 'opacity-0'
       }`}
     >
-      <div className="h-full w-1/3 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full animate-progress-sweep" />
+      <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500 via-green-400 to-emerald-600 rounded-full animate-progress-sweep" />
     </div>
   );
 }

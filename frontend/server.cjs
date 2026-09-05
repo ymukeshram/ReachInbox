@@ -52,5 +52,5 @@ http.createServer((req, res) => {
     serveFile(res, path.join(DIST, 'index.html'));
   }
 }).listen(PORT, '0.0.0.0', () => {
-  console.log(`Reachify frontend listening on port ${PORT}`);
+  console.log(`ReachInbox frontend listening on port ${PORT}`);
 });

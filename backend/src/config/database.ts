@@ -4,12 +4,13 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const isNeon = (process.env.DATABASE_URL || '').includes('neon.tech');
+const useSsl = isNeon || process.env.DB_SSL === 'true';
 
 export const pool = new Pool(
   process.env.DATABASE_URL
     ? {
         connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: isNeon }, // Neon has valid cert; others may not
+        ...(useSsl ? { ssl: { rejectUnauthorized: isNeon } } : {}),
         max: 10,
         min: 0,
         idleTimeoutMillis: 30_000,
@@ -41,7 +42,7 @@ pool.on('connect', (client) => {
 pool.on('remove', () => console.log('Database client removed from pool'));
 
 export async function initDatabase() {
-  let retries = 8; // enough for Render free-tier cold start (~30-40s)
+  let retries = 2; // Shorter retry count for fast local feedback
   let client;
 
   while (retries > 0) {
@@ -52,16 +53,18 @@ export async function initDatabase() {
       break;
     } catch (err: any) {
       retries--;
-      if (retries === 0) throw err;
-      console.log(`Database connection failed: ${err.message}`);
-      console.log(`Retrying in 5 seconds... (${retries} attempts left)`);
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      if (retries > 0) {
+        console.log(`Database connection failed: ${err.message}. Retrying in 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        console.warn('⚠️ Could not connect to PostgreSQL database on localhost:5432.');
+        console.warn('Backend running in database-offline mode. Install PostgreSQL or set DATABASE_URL in backend/.env to connect.');
+        return; // Non-fatal exit
+      }
     }
   }
   
-  if (!client) {
-    throw new Error('Failed to connect to database after retries');
-  }
+  if (!client) return;
   
   try {
     // Users table for persistent user data

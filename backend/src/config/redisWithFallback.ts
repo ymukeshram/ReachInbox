@@ -298,6 +298,13 @@ class RedisWithFallback {
     return !this.useRedis;
   }
 
+  async assertAvailable(): Promise<void> {
+    if (!this.useRedis || !this.redis) {
+      throw new Error('Redis connection is unavailable');
+    }
+    await this.redis.ping();
+  }
+
   // Get the underlying Redis instance for BullMQ
   getRedisInstance(): Redis | null {
     return this.redis;

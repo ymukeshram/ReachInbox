@@ -15,11 +15,11 @@ import { initDatabase, pool } from './config/database';
 import { redis } from './config/redisWithFallback';
 import authRoutes from './routes/auth';
 import emailRoutes from './routes/emails';
-import paymentRoutes from './routes/payment';
 import trackingRoutes from './routes/tracking';
 import campaignRoutes from './routes/campaigns';
 import sequenceRoutes from './routes/sequences';
 import contactRoutes from './routes/contacts';
+import slackRoutes from './routes/slack';
 import { emailQueue, emailWorker } from './queue/emailQueue';
 import { validateEnv } from './utils/env';
 import { logger } from './utils/logger';
@@ -29,16 +29,22 @@ import { runMigrations } from './migrations';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { setupElasticsearch } from './config/elasticsearch';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
 
 dotenv.config();
-
-// Validate environment variables
-validateEnv();
 
 const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
 const isProd = process.env.NODE_ENV === 'production';
+const sessionSecret = process.env.SESSION_SECRET || (!isProd ? 'reachify-local-development-session-secret' : undefined);
+
+if (!sessionSecret) {
+  throw new Error('SESSION_SECRET must be configured in production');
+}
 
 // Request ID middleware for tracing
 app.use((req, res, next) => {
@@ -137,7 +143,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // instead of a client-supplied value.
 const sessionMiddleware = session({
   store: new RedisStore({ client: redis }),
-  secret: process.env.SESSION_SECRET!, // validateEnv() guarantees this is always set
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   rolling: true, // Reset expiry on every request
@@ -223,13 +229,31 @@ const cacheMiddleware = (duration: number) => {
 app.use('/api/emails/stats',     cacheMiddleware(30));  // 30 seconds
 app.use('/api/emails/templates', cacheMiddleware(60));  // 1 minute
 
+// BullMQ Dashboard
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath('/admin/queues');
+createBullBoard({
+  queues: [new BullMQAdapter(emailQueue)],
+  serverAdapter: serverAdapter,
+});
+const adminEmails = new Set(
+  (process.env.ADMIN_EMAILS || '').split(',').map(email => email.trim().toLowerCase()).filter(Boolean)
+);
+app.use('/admin/queues', (req, res, next) => {
+  const user = req.user as any;
+  if (!req.isAuthenticated() || (!user?.isAdmin && user?.role !== 'admin' && !adminEmails.has(user?.email?.toLowerCase()))) {
+    return res.status(403).send('Forbidden');
+  }
+  next();
+}, serverAdapter.getRouter());
+
 // Routes
 app.use('/auth', authRoutes);
+app.use('/api/slack', slackRoutes);
 app.use('/api/emails', emailRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/sequences', sequenceRoutes);
 app.use('/api/contacts', contactRoutes);
-app.use('/api/payment', paymentRoutes);
 app.use('/track', trackingRoutes);
 
 
@@ -390,7 +414,10 @@ async function reEnqueuePendingEmails() {
     );
 
     let requeued = 0;
-    const limit = parseInt(process.env.MAX_EMAILS_PER_HOUR || '200');
+    const limit = parseInt(
+      process.env.MAX_EMAILS_PER_HOUR_PER_SENDER || process.env.MAX_EMAILS_PER_HOUR || '200'
+    );
+    const delayBetweenEmailsMs = Math.max(0, parseInt(process.env.MIN_DELAY_BETWEEN_EMAILS_MS || '0'));
     // Stagger overdue emails at 500 ms each (max 30 s lead-in) to avoid bursting the SMTP provider
     const OVERDUE_STAGGER_MS = 500;
     let overdueIndex = 0;
@@ -415,7 +442,8 @@ async function reEnqueuePendingEmails() {
               subject: row.subject,
               body: row.body,
               userId: row.user_id,
-              hourlyLimit: limit
+              hourlyLimit: limit,
+              delayBetweenEmailsMs
             },
             { delay, jobId: row.id }
           );
@@ -460,8 +488,24 @@ async function cleanupOldEmails() {
 
 async function start() {
   try {
-    await initDatabase();
-    logger.info('Database initialized');
+    if (isProd) validateEnv();
+
+    if (isProd) {
+      await redis.assertAvailable();
+    }
+
+    try {
+      await initDatabase();
+      logger.info('Database initialized');
+    } catch (dbErr: any) {
+      logger.warn({ error: dbErr?.message }, 'Database init warning (continuing startup)');
+    }
+
+    try {
+      await setupElasticsearch();
+    } catch (esErr: any) {
+      logger.warn({ error: esErr?.message }, 'Elasticsearch setup skipped/failed');
+    }
     
     // Run migrations
     try {
@@ -471,7 +515,11 @@ async function start() {
       logger.error({ error: err.message }, 'Migration failed');
     }
     
-    await reEnqueuePendingEmails();
+    try {
+      await reEnqueuePendingEmails();
+    } catch (queueErr: any) {
+      logger.warn({ error: queueErr?.message }, 'reEnqueuePendingEmails failed/skipped');
+    }
     
     // Run cleanup daily at 2 AM
     const now = new Date();

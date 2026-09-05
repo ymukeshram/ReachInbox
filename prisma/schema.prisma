@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum EmailStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+model Tenant {
+  id               String            @id @default(cuid())
+  name             String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  users            User[]
+  slackIntegration SlackIntegration?
+  emailJobs        EmailJob[]
+
+  @@index([createdAt])
+}
+
+model User {
+  id          String     @id @default(cuid())
+  googleId    String     @unique
+  email       String     @unique
+  name        String?
+  avatarUrl   String?
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  emailJobs   EmailJob[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  lastLoginAt DateTime?
+
+  @@index([tenantId])
+}
+
+model SlackIntegration {
+  id            String   @id @default(cuid())
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accessToken   String?
+  refreshToken  String?
+  webhookUrl    String?
+  slackTeamId   String?
+  slackTeamName String?
+  connected     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model EmailJob {
+  id           String      @id @default(cuid())
+  tenantId     String
+  userId       String
+  sender       String
+  recipient    String
+  subject      String
+  body         String      @db.Text
+  status       EmailStatus @default(PENDING)
+  scheduledAt  DateTime
+  sentAt       DateTime?
+  failedAt     DateTime?
+  errorMessage String?     @db.Text
+  jobId        String      @unique
+  delaySeconds Int         @default(0)
+  hourlyLimit  Int?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, scheduledAt])
+  @@index([userId, status, scheduledAt])
+  @@index([sender, createdAt])
+  @@index([recipient])
+}

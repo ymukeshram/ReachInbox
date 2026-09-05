@@ -2,16 +2,23 @@ import { Queue, Worker, Job } from 'bullmq';
 import { v4 as uuidv4 } from 'uuid';
 import { redis } from '../config/redisWithFallback';
 import { sendEmail, classifyBounce, EmailAttachment } from '../services/emailService';
-import { sendWebhook } from '../services/webhookService';
+import { sendWebhook, sendRateLimitAlert } from '../services/webhookService';
 import { pool } from '../config/database';
 import { logger } from '../utils/logger';
+import { esClient } from '../config/elasticsearch';
 import { getUserRole, ROLE_PERMISSIONS } from '../middleware/rbac';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const WORKER_CONCURRENCY  = parseInt(process.env.WORKER_CONCURRENCY  || '10');
-const MAX_EMAILS_PER_HOUR = parseInt(process.env.MAX_EMAILS_PER_HOUR || '200');
+const MAX_EMAILS_PER_HOUR = parseInt(
+  process.env.MAX_EMAILS_PER_HOUR_PER_SENDER || process.env.MAX_EMAILS_PER_HOUR || '200'
+);
+const MIN_DELAY_BETWEEN_EMAILS_MS = Math.max(
+  0,
+  parseInt(process.env.MIN_DELAY_BETWEEN_EMAILS_MS || '0')
+);
 const BACKEND_URL = process.env.RENDER_EXTERNAL_URL || process.env.BACKEND_URL || 'http://localhost:3001';
 
 export interface EmailJobData {
@@ -21,6 +28,7 @@ export interface EmailJobData {
   body:          string;
   userId:        string;
   hourlyLimit:   number;
+  delayBetweenEmailsMs?: number;
   attachmentId?: string; // optional attachment stored in DB
   sequenceId?:   string; // if part of a sequence
 }
@@ -44,17 +52,43 @@ export const emailQueue = new Queue('email-queue', {
 // ─── Rate limiting (atomic) ───────────────────────────────────────────────────
 
 async function checkAndIncrementRateLimit(userId: string, limit: number): Promise<boolean> {
-  const hourKey = new Date().toISOString().slice(0, 13);
-  const key     = `rate:${hourKey}:${userId}`;
-  const ttl     = 3600 - (Math.floor(Date.now() / 1000) % 3600);
+  const realRedis = redis.getRedisInstance();
+  if (realRedis) {
+    const key = `rate:sliding:${userId}`;
+    const now = Date.now();
+    const oneHourAgo = now - 3600 * 1000;
 
-  const count = await redis.incr(key);
-  if (count === 1) await redis.expire(key, ttl);
-  if (count > limit) {
-    await redis.decr(key);
-    return false;
+    const result = await realRedis.eval(
+      `local key = KEYS[1]
+       local now = tonumber(ARGV[1])
+       local cutoff = tonumber(ARGV[2])
+       local limit = tonumber(ARGV[3])
+       redis.call('ZREMRANGEBYSCORE', key, '-inf', cutoff)
+       if redis.call('ZCARD', key) >= limit then return 0 end
+       redis.call('ZADD', key, now, ARGV[4])
+       redis.call('EXPIRE', key, 3600)
+       return 1`,
+      1,
+      key,
+      now,
+      oneHourAgo,
+      limit,
+      `${now}-${uuidv4()}`
+    );
+    return result === 1;
+  } else {
+    const hourKey = new Date().toISOString().slice(0, 13);
+    const key     = `rate:${hourKey}:${userId}`;
+    const ttl     = 3600 - (Math.floor(Date.now() / 1000) % 3600);
+
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, ttl);
+    if (count > limit) {
+      await redis.decr(key);
+      return false;
+    }
+    return true;
   }
-  return true;
 }
 
 // ─── Guard helpers ────────────────────────────────────────────────────────────
@@ -241,7 +275,7 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
     }
 
     // Standard email send
-    const { emailId, recipientEmail, subject, body, userId, hourlyLimit, attachmentId, sequenceId } =
+    const { emailId, recipientEmail, subject, body, userId, hourlyLimit, delayBetweenEmailsMs, attachmentId, sequenceId } =
       job.data as EmailJobData;
     const limit = hourlyLimit || MAX_EMAILS_PER_HOUR;
 
@@ -274,6 +308,7 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
       const nextHour = new Date();
       nextHour.setHours(nextHour.getHours()+1, 0, 0, 0);
       await emailQueue.add('send-email', job.data, { delay: nextHour.getTime()-Date.now(), jobId: `${emailId}-ratelimit-${Date.now()}` });
+      sendRateLimitAlert(userId, emailId, limit).catch(() => {});
       return { rescheduled: true };
     }
 
@@ -290,6 +325,17 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
         `UPDATE emails SET status='sent', sent_at=NOW(), updated_at=NOW() WHERE id=$1`,
         [emailId]
       );
+      
+      try {
+        await esClient.index({
+          index: 'email_logs',
+          id: emailId,
+          body: {
+            emailId, userId, recipientEmail, subject, body,
+            status: 'sent', timestamp: new Date().toISOString()
+          }
+        });
+      } catch (e) {}
 
       sendWebhook({
         event: 'email.sent',
@@ -341,6 +387,15 @@ export const emailWorker = new Worker<EmailJobData | SequenceFollowupJobData>(
         }).catch(() => {});
         return { failed: true, bounceType: 'hard' }; // no retry
       }
+
+      esClient.index({
+        index: 'email_logs',
+        id: emailId,
+        body: {
+          emailId, userId, recipientEmail, subject, body,
+          status: 'failed', errorMessage, timestamp: new Date().toISOString()
+        }
+      }).catch(() => {});
 
       logger.error({ emailId, recipientEmail, error: errorMessage, attempt: job.attemptsMade+1 }, 'Email failed');
 

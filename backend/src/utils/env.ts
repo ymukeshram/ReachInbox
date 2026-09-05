@@ -1,6 +1,3 @@
-import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { logger } from './logger';
 
 const REQUIRED_VARS = [
@@ -10,12 +7,12 @@ const REQUIRED_VARS = [
   'GOOGLE_CLIENT_SECRET',
   'GOOGLE_CALLBACK_URL',
   'FRONTEND_URL',
-  'BREVO_API_KEY',
-  'BREVO_FROM_EMAIL',
+  'BACKEND_URL',
+  'SESSION_SECRET',
 ];
 
 const NUMERIC_VARS = ['PORT', 'REDIS_PORT'];
-const URL_VARS = ['DATABASE_URL', 'FRONTEND_URL', 'GOOGLE_CALLBACK_URL'];
+const URL_VARS = ['DATABASE_URL', 'FRONTEND_URL', 'BACKEND_URL', 'GOOGLE_CALLBACK_URL'];
 
 function fail(message: string): never {
   logger.fatal(message);
@@ -23,7 +20,7 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** Validates required env vars, checks formats, and ensures a persistent session secret. Exits the process on failure. */
+/** Validates production configuration and exits before serving traffic if it is incomplete. */
 export function validateEnv(): void {
   const missing = REQUIRED_VARS.filter(key => !process.env[key]);
   if (missing.length > 0) {
@@ -44,18 +41,10 @@ export function validateEnv(): void {
     }
   }
 
-  // Generate a persistent session secret if not provided
-  if (!process.env.SESSION_SECRET) {
-    const secretPath = path.join(__dirname, '../../.session-secret');
-
-    if (fs.existsSync(secretPath)) {
-      process.env.SESSION_SECRET = fs.readFileSync(secretPath, 'utf-8').trim();
-    } else {
-      const secret = crypto.randomBytes(32).toString('hex');
-      fs.writeFileSync(secretPath, secret);
-      process.env.SESSION_SECRET = secret;
-      logger.info('Generated new session secret');
-    }
+  const smtpVars = ['SMTP_HOST', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM_EMAIL'];
+  const missingSmtp = smtpVars.filter(key => !process.env[key]);
+  if (missingSmtp.length > 0) {
+    fail(`Missing production SMTP variables:\n${missingSmtp.map(k => `   - ${k}`).join('\n')}`);
   }
 
   logger.info('Environment variables validated');
