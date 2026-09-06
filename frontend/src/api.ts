@@ -6,9 +6,8 @@ interface AxiosRequestConfigWithMetadata extends InternalAxiosRequestConfig {
 }
 
 const getApiUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && typeof envUrl === 'string' && !envUrl.includes('localhost')) {
-    return envUrl.replace(/\/$/, '');
+  if (import.meta.env.DEV && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL.replace(/\/$/, '');
   }
   return '';
 };
