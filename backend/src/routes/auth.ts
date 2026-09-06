@@ -57,6 +57,7 @@ router.get('/google', (req: Request, res: Response, next: NextFunction) => {
       name: 'Mukesh Ram',
       avatar: 'https://lh3.googleusercontent.com/a/default-user'
     };
+    (req.session as any).user = user;
     return req.logIn(user, (err) => {
       if (err) return res.redirect('/login?error=oauth_failed');
       return res.redirect('/dashboard');
@@ -92,10 +93,13 @@ router.get(
 
 router.get('/user', (req, res) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
-    res.json(req.user);
-  } else {
-    res.status(401).json({ error: 'Not authenticated' });
+    return res.json(req.user);
   }
+  const fallbackUser = (req as any).user || (req.session as any)?.user;
+  if (fallbackUser) {
+    return res.json(fallbackUser);
+  }
+  return res.status(401).json({ error: 'Not authenticated' });
 });
 
 router.post('/email-login', async (req: Request, res: Response) => {
@@ -128,6 +132,7 @@ router.post('/email-login', async (req: Request, res: Response) => {
       logger.warn({ error: dbErr.message }, 'DB upsert failed during email-login');
     }
 
+    (req.session as any).user = user;
     req.logIn(user, (loginErr) => {
       if (loginErr) {
         logger.error({ error: loginErr.message }, 'req.logIn error in email-login');

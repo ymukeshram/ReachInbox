@@ -15,7 +15,14 @@ const devUser: User = {
 };
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('reachinbox_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [startupPct, setStartupPct] = useState(4);
 
@@ -40,8 +47,9 @@ function App() {
         localStorage.setItem('reachinbox_user', JSON.stringify(res.data));
       })
       .catch(() => {
-        setUser(null);
-        localStorage.removeItem('reachinbox_user');
+        if (!localStorage.getItem('reachinbox_user')) {
+          setUser(null);
+        }
       })
       .finally(() => {
         clearTimeout(timeout);
