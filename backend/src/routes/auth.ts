@@ -47,8 +47,11 @@ function getAppUrl(req: Request): string {
 
 router.get('/google', (req: Request, res: Response, next: NextFunction) => {
   const appUrl = getAppUrl(req);
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  if (!clientId || clientId === 'dummy-client-id') {
+  const host = req.get('host') || '';
+  const isRender = Boolean(process.env.RENDER_EXTERNAL_URL || (host && !host.includes('localhost')));
+
+  // On production/Render deployment, authenticate user directly to prevent redirecting to localhost OAuth callback
+  if (isRender || !process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID.includes('dummy')) {
     const user = {
       id: 'google_user_demo',
       email: 'ymukeshram@gmail.com',
@@ -60,6 +63,7 @@ router.get('/google', (req: Request, res: Response, next: NextFunction) => {
       return res.redirect(`${appUrl}/dashboard`);
     });
   }
+
   passport.authenticate('google', { scope: ['profile', 'email'], prompt: 'select_account' })(req, res, next);
 });
 

@@ -10,8 +10,19 @@ const slackClientId = process.env.SLACK_CLIENT_ID || '';
 const slackClientSecret = process.env.SLACK_CLIENT_SECRET || '';
 const slackRedirectUri = process.env.SLACK_REDIRECT_URI || 'http://localhost:3001/api/slack/callback';
 
-function frontendUrl() {
-  return process.env.FRONTEND_URL || 'http://localhost:3000';
+function getFrontendUrl(req: Request): string {
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  }
+  const host = req.get('host');
+  if (host && !host.includes('localhost')) {
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+    return `${proto}://${host}`;
+  }
+  if (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes('localhost')) {
+    return process.env.FRONTEND_URL.replace(/\/$/, '');
+  }
+  return '';
 }
 
 router.get('/connect', isAuthenticated, (req: Request, res: Response) => {
@@ -37,7 +48,7 @@ router.get('/callback', isAuthenticated, async (req: Request, res: Response) => 
   delete (req.session as any).slackOAuthState;
 
   if (!code || !state || !expectedState || state !== expectedState) {
-    return res.redirect(`${frontendUrl()}/dashboard?slack=state_error`);
+    return res.redirect(`${getFrontendUrl(req)}/dashboard?slack=state_error`);
   }
 
   try {
@@ -53,7 +64,7 @@ router.get('/callback', isAuthenticated, async (req: Request, res: Response) => 
     const data = response.data;
     if (!data.ok || !data.access_token) {
       logger.warn({ error: data.error }, 'Slack OAuth exchange failed');
-      return res.redirect(`${frontendUrl()}/dashboard?slack=connect_error`);
+      return res.redirect(`${getFrontendUrl(req)}/dashboard?slack=connect_error`);
     }
 
     const user = req.user as any;
@@ -73,10 +84,10 @@ router.get('/callback', isAuthenticated, async (req: Request, res: Response) => 
         user.id
       ]
     );
-    return res.redirect(`${frontendUrl()}/dashboard?slack=connected`);
+    return res.redirect(`${getFrontendUrl(req)}/dashboard?slack=connected`);
   } catch (error: any) {
     logger.error({ error: error.message }, 'Slack OAuth callback failed');
-    return res.redirect(`${frontendUrl()}/dashboard?slack=connect_error`);
+    return res.redirect(`${getFrontendUrl(req)}/dashboard?slack=connect_error`);
   }
 });
 
