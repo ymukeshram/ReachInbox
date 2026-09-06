@@ -1,14 +1,32 @@
 # ReachInbox — Full-stack Email Job Scheduler & Inbox Dashboard
 
+**Live Demo:** [https://reachinbox-alok.onrender.com](https://reachinbox-alok.onrender.com)
+
 A production-grade, full-stack email job scheduler service and 3-column inbox dashboard built for **ReachInbox.ai** (Outbox Labs). 
 
 This application reliably schedules, throttles, persists, and sends emails at scale using **BullMQ**, **Redis**, **PostgreSQL**, **Elasticsearch**, **Express.js**, and **React**.
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## 🚀 Live Deployment
 
-The entire system (PostgreSQL, Redis, Elasticsearch, Prisma migrations, Backend, and Frontend) can be launched using a single command:
+The application is deployed on Render and accessible at:
+👉 **[https://reachinbox-alok.onrender.com](https://reachinbox-alok.onrender.com)**
+
+- **Frontend Dashboard**: `https://reachinbox-alok.onrender.com/dashboard`
+- **Backend API Health Check**: `https://reachinbox-alok.onrender.com/health`
+- **Live BullMQ Queue Dashboard**: `https://reachinbox-alok.onrender.com/admin/queues`
+
+---
+
+## 💻 1. How to Run Locally
+
+### Prerequisites
+- Node.js (v18+)
+- Docker & Docker Compose (for PostgreSQL, Redis, and Elasticsearch)
+
+### Quick Start
+The entire system can be launched using a single command:
 
 ```bash
 # 1. Install workspace dependencies
@@ -18,79 +36,14 @@ npm install
 npm run dev:local
 ```
 
-### Access Points
+### Access Points (Local)
 - **Frontend Dashboard**: [http://127.0.0.1:3000/dashboard](http://127.0.0.1:3000/dashboard)
 - **Backend API Server**: [http://localhost:3001/health](http://localhost:3001/health)
 - **Live BullMQ Dashboard**: [http://localhost:3001/admin/queues](http://localhost:3001/admin/queues)
 
 ---
 
-## 💻 1. How to Run Backend
-
-### Prerequisites
-- Node.js (v18+)
-- Docker & Docker Compose (for PostgreSQL, Redis, and Elasticsearch)
-
-### Manual Backend Setup
-If running services manually without `npm run dev:local`:
-
-1. Start infrastructure containers:
-   ```bash
-   docker compose up -d
-   ```
-
-2. Navigate to `backend` directory & install dependencies:
-   ```bash
-   cd backend
-   npm install
-   ```
-
-3. Ensure environment variables are loaded (`backend/.env`):
-   ```env
-   PORT=3001
-   DATABASE_URL=postgresql://reachinbox:reachinbox@localhost:5432/reachinbox?schema=public
-   REDIS_HOST=localhost
-   REDIS_PORT=6379
-   WORKER_CONCURRENCY=5
-   MAX_EMAILS_PER_HOUR_PER_SENDER=200
-   MIN_DELAY_BETWEEN_EMAILS_MS=2000
-   ```
-
-4. Apply database migrations:
-   ```bash
-   cd ..
-   npm run db:deploy
-   ```
-
-5. Run the backend development server (starts Express API & BullMQ worker):
-   ```bash
-   npm --prefix backend run dev
-   ```
-
----
-
-## 🎨 2. How to Run Frontend
-
-1. Navigate to `frontend` directory & install dependencies:
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. Configure environment variables (`frontend/.env`):
-   ```env
-   VITE_API_URL=http://localhost:3001
-   VITE_DEV_AUTH_BYPASS=true
-   ```
-
-3. Launch the Vite dev server:
-   ```bash
-   npm run dev -- --host 127.0.0.1 --port 3000
-   ```
-
----
-
-## 📧 3. Ethereal Email Setup & Environment Variables
+## 📧 2. Ethereal Email Setup & Environment Variables
 
 ### Ethereal Email (Fake SMTP)
 In development, ReachInbox automatically creates an **Ethereal Email** sandbox account if custom SMTP credentials are not specified.
@@ -99,24 +52,15 @@ In development, ReachInbox automatically creates an **Ethereal Email** sandbox a
   ```text
   [INFO] Ethereal email sent preview: https://ethereal.email/message/Yx...
   ```
-- **Optional Custom SMTP Setup** (`backend/.env`):
-  ```env
-  SMTP_HOST=smtp.ethereal.email
-  SMTP_PORT=587
-  SMTP_USER=your_ethereal_user@ethereal.email
-  SMTP_PASS=your_ethereal_password
-  SMTP_FROM_NAME=ReachInbox
-  SMTP_FROM_EMAIL=reachinbox@ethereal.email
-  ```
 
 ---
 
-## 🏗️ 4. Architecture Overview
+## 🏗️ 3. Architecture Overview
 
 ```
  ┌────────────────┐       ┌─────────────────┐       ┌──────────────────┐
  │ React Frontend │ ────> │ Express API     │ ────> │ PostgreSQL DB    │
- │ (Dashboard UI) │ <──── │ Server (3001)   │       │ (State & Users)  │
+ │ (Dashboard UI) │ <──── │ Server          │       │ (State & Users)  │
  └────────────────┘       └────────┬────────┘       └──────────────────┘
                                    │
                                    ▼
@@ -153,7 +97,7 @@ In development, ReachInbox automatically creates an **Ethereal Email** sandbox a
 
 ---
 
-## 🎯 5. Features Implemented Matrix
+## 🎯 4. Features Implemented Matrix
 
 ### ⚙️ Backend Features
 - ✅ **API Scheduler**: `POST /api/emails/schedule` handles batch & individual email scheduling.
@@ -164,7 +108,7 @@ In development, ReachInbox automatically creates an **Ethereal Email** sandbox a
 - ✅ **Non-Fatal Database Initialization**: Graceful fallbacks for local database startup and offline development.
 
 ### 🎨 Frontend Features
-- ✅ **Google OAuth & Dev Bypass**: Login page with Google OAuth redirect and instant local dev bypass toggle.
+- ✅ **Google OAuth**: Full Google OAuth flow implementation for secure user authentication.
 - ✅ **3-Column Inbox Dashboard**: Replicates Figma specification with `Scheduled Emails` and `Sent Emails` view filters.
 - ✅ **User Profile Header**: Displays logged-in user name, email address, avatar, and Logout button.
 - ✅ **Compose Modal**:
@@ -172,20 +116,10 @@ In development, ReachInbox automatically creates an **Ethereal Email** sandbox a
   - CSV/XLSX recipient list parser displaying total recipient count.
   - Throttling settings: **Start Time**, **Delay Between Emails**, and **Hourly Limit**.
 - ✅ **Interactive Action Toolbar**:
-  - ⭐ **Star Button**: Pins starred emails to the top of the list view with a gold icon (`#f59e0b`).
+  - ⭐ **Star Button**: Pins starred emails to the top of the list view with a gold icon.
   - 🗑️ **Delete Button**: Permanently deletes selected emails from view.
   - 📦 **Archive Button**: Archives emails from main workspace.
-  - 🔍 **Search & Filter**: Real-time subject/recipient search with clear button (`✕`) and sorting dropdown (`All`, `Starred Only`, `Newest First`, `Oldest First`).
-
----
-
-## 🧪 Submission Video Walkthrough Guide
-
-When creating the 5-minute demo video:
-1. **Show Dashboard**: Open `http://127.0.0.1:3000/dashboard` and highlight the 3-column layout, user profile header, and tabs.
-2. **Schedule Emails**: Click **Compose New Email**, attach a recipient `.csv` file, configure throttling delays, and click **Schedule**.
-3. **Show Server Restart**: Stop the backend process in terminal (`Ctrl + C`), restart it, and show that scheduled emails still execute at the exact scheduled time without loss or duplicates.
-4. **Show Live BullMQ Queue**: Open `http://localhost:3001/admin/queues` to display live queue jobs and metrics.
+  - 🔍 **Search & Filter**: Real-time subject/recipient search with sorting capabilities.
 
 ---
 

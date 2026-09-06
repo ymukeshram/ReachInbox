@@ -667,7 +667,7 @@ router.get('/export', isAuthenticated, async (req: Request, res: Response) => {
     );
 
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="reachify-${status}-${Date.now()}.csv"`);
+    res.setHeader('Content-Disposition', `attachment; filename="reachinbox-${status}-${Date.now()}.csv"`);
     res.send(csv);
   } catch (err: any) {
     logger.error({ error: err.message }, 'Export failed');

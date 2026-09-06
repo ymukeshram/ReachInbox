@@ -40,7 +40,7 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 3001;
 const isProd = process.env.NODE_ENV === 'production';
-const sessionSecret = process.env.SESSION_SECRET || (!isProd ? 'reachify-local-development-session-secret' : undefined);
+const sessionSecret = process.env.SESSION_SECRET || (!isProd ? 'reachinbox-local-development-session-secret' : undefined);
 
 if (!sessionSecret) {
   throw new Error('SESSION_SECRET must be configured in production');

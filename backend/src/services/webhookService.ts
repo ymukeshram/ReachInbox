@@ -39,8 +39,8 @@ export async function sendWebhook(payload: WebhookPayload): Promise<void> {
       maxRedirects: 0, // don't follow redirects — a malicious endpoint could redirect to an internal address, bypassing the SSRF check applied when the URL was saved
       headers: {
         'Content-Type': 'application/json',
-        'X-Reachify-Event': payload.event,
-        'X-Reachify-Signature': generateSignature(payload, webhookSecret)
+        'X-ReachInbox-Event': payload.event,
+        'X-ReachInbox-Signature': generateSignature(payload, webhookSecret)
       }
     });
 
@@ -68,7 +68,7 @@ export async function sendRateLimitAlert(userId: string, emailId: string, limit:
     if (!webhookUrl) return;
 
     await axios.post(webhookUrl, {
-      text: `Reachify paused email job ${emailId}: the hourly sender limit of ${limit} was reached. It will resume in the next hour.`
+      text: `ReachInbox paused email job ${emailId}: the hourly sender limit of ${limit} was reached. It will resume in the next hour.`
     }, { timeout: 5000, maxRedirects: 0 });
   } catch (error: any) {
     logger.warn({ error: error.message, userId, emailId }, 'Rate-limit Slack notification failed');

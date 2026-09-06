@@ -68,7 +68,7 @@ export function calculateSpamScore(subject: string, body: string): SpamResult {
   // Missing unsubscribe hint (already auto-injected by emailService, just warn)
   if (!combined.includes('unsubscribe') && !combined.includes('opt out')) {
     score += 5;
-    issues.push('No unsubscribe mention (auto-added by Reachify)');
+    issues.push('No unsubscribe mention (auto-added by ReachInbox)');
   }
 
   const capped  = Math.min(100, score);

@@ -176,63 +176,16 @@ router.get('/unsubscribe/:emailId', async (req: Request, res: Response) => {
       <!DOCTYPE html>
       <html>
       <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Unsubscribed - Reachify</title>
+        <title>Unsubscribed - ReachInbox</title>
         <style>
-          body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0;
-            padding: 20px;
-          }
-          .container {
-            background: white;
-            border-radius: 16px;
-            padding: 48px;
-            max-width: 500px;
-            text-align: center;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-          }
-          .icon {
-            font-size: 64px;
-            margin-bottom: 24px;
-          }
-          h1 {
-            color: #1a202c;
-            margin-bottom: 16px;
-            font-size: 28px;
-          }
-          p {
-            color: #4a5568;
-            line-height: 1.6;
-            margin-bottom: 24px;
-          }
-          .email {
-            background: #f7fafc;
-            padding: 12px;
-            border-radius: 8px;
-            color: #2d3748;
-            font-family: monospace;
-            margin-bottom: 24px;
-          }
-          .button {
-            display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 32px;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: transform 0.2s;
-          }
-          .button:hover {
-            transform: translateY(-2px);
-          }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #f3faf6; color: #1f2937; }
+          .container { text-align: center; background: white; padding: 48px 40px; border-radius: 20px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05), 0 8px 10px -6px rgba(0,0,0,0.01); max-width: 440px; width: 90%; border: 1px solid #e5e7eb; }
+          .icon { width: 64px; height: 64px; background: #d1fae5; color: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; margin: 0 auto 24px; }
+          h1 { color: #111827; margin: 0 0 16px; font-size: 24px; font-weight: 700; letter-spacing: -0.025em; }
+          p { color: #6b7280; margin: 0 0 24px; line-height: 1.6; font-size: 15px; }
+          .email { font-weight: 600; color: #374151; background: #f9fafb; padding: 8px 16px; border-radius: 8px; display: inline-block; margin-bottom: 32px; border: 1px solid #f3f4f6; }
+          .button { display: inline-block; background: linear-gradient(to right, #10b981, #059669); color: white; padding: 12px 28px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 15px; transition: all 0.2s; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2); }
+          .button:hover { transform: translateY(-1px); box-shadow: 0 6px 8px -1px rgba(16, 185, 129, 0.3); }
         </style>
       </head>
       <body>
@@ -242,7 +195,7 @@ router.get('/unsubscribe/:emailId', async (req: Request, res: Response) => {
           <p>We're sorry to see you go! You will no longer receive emails from us at:</p>
           <div class="email">${recipient_email}</div>
           <p>If this was a mistake, you can resubscribe anytime by contacting us.</p>
-          <a href="${process.env.FRONTEND_URL || ''}" class="button">Visit Reachify</a>
+          <a href="${process.env.FRONTEND_URL || ''}" class="button">Visit ReachInbox</a>
         </div>
       </body>
       </html>
