@@ -124,4 +124,4 @@ In development, ReachInbox automatically creates an **Ethereal Email** sandbox a
 ---
 
 ## 📄 License
-This project is created for the ReachInbox Software Development Internship Assignment.
+This project is created for the ReachInbox Software Development Assignment.
