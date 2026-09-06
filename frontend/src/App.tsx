@@ -15,14 +15,7 @@ const devUser: User = {
 };
 
 function App() {
-  const [user, setUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem('reachinbox_user');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [startupPct, setStartupPct] = useState(4);
 
@@ -35,7 +28,7 @@ function App() {
     }
 
     const startedAt = Date.now();
-    const startupTimeoutMs = 2000;
+    const startupTimeoutMs = 1500;
     const timeout = setTimeout(() => setLoading(false), startupTimeoutMs);
     const tick = setInterval(() => {
       setStartupPct(Math.min(96, Math.round(((Date.now() - startedAt) / startupTimeoutMs) * 100)));
@@ -47,10 +40,8 @@ function App() {
         localStorage.setItem('reachinbox_user', JSON.stringify(res.data));
       })
       .catch(() => {
-        // If API fails, keep user from localStorage if present
-        if (!localStorage.getItem('reachinbox_user')) {
-          setUser(null);
-        }
+        setUser(null);
+        localStorage.removeItem('reachinbox_user');
       })
       .finally(() => {
         clearTimeout(timeout);
