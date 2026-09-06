@@ -46,7 +46,6 @@ function getAppUrl(req: Request): string {
 }
 
 router.get('/google', (req: Request, res: Response, next: NextFunction) => {
-  const appUrl = getAppUrl(req);
   const host = req.get('host') || '';
   const isRender = Boolean(process.env.RENDER_EXTERNAL_URL || (host && !host.includes('localhost')));
 
@@ -59,8 +58,8 @@ router.get('/google', (req: Request, res: Response, next: NextFunction) => {
       avatar: 'https://lh3.googleusercontent.com/a/default-user'
     };
     return req.logIn(user, (err) => {
-      if (err) return res.redirect(`${appUrl}/login?error=oauth_failed`);
-      return res.redirect(`${appUrl}/dashboard`);
+      if (err) return res.redirect('/login?error=oauth_failed');
+      return res.redirect('/dashboard');
     });
   }
 
@@ -70,23 +69,22 @@ router.get('/google', (req: Request, res: Response, next: NextFunction) => {
 router.get(
   '/google/callback',
   (req: Request, res: Response, next: NextFunction) => {
-    const appUrl = getAppUrl(req);
     passport.authenticate('google', (err: any, user: any) => {
       if (err) {
         logger.error({ error: err.message }, 'Google OAuth error');
-        return res.redirect(`${appUrl}/login?error=oauth_failed`);
+        return res.redirect('/login?error=oauth_failed');
       }
       if (!user) {
         logger.warn('Google OAuth: no user returned');
-        return res.redirect(`${appUrl}/login?error=no_user`);
+        return res.redirect('/login?error=no_user');
       }
       req.logIn(user, (loginErr) => {
         if (loginErr) {
           logger.error({ error: loginErr.message }, 'Session login error');
-          return res.redirect(`${appUrl}/login?error=session_failed`);
+          return res.redirect('/login?error=session_failed');
         }
         logger.info({ userId: user.id }, 'User logged in successfully');
-        res.redirect(`${appUrl}/dashboard`);
+        res.redirect('/dashboard');
       });
     })(req, res, next);
   }
