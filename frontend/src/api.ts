@@ -5,8 +5,16 @@ interface AxiosRequestConfigWithMetadata extends InternalAxiosRequestConfig {
   metadata?: { startTime: Date };
 }
 
+const getApiUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && !envUrl.includes('localhost')) {
+    return envUrl.replace(/\/$/, '');
+  }
+  return '';
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '',
+  baseURL: getApiUrl(),
   withCredentials: true,
   timeout: 60_000,
   headers: { 'Content-Type': 'application/json' }
@@ -56,7 +64,7 @@ export const saveWebhookConfig   = (webhookUrl: string)   => api.post('/auth/web
 export const regenerateWebhookSecret = ()                 => api.post('/auth/webhook/regenerate-secret');
 export const getSlackStatus      = ()                     => api.get('/api/slack/status');
 export const disconnectSlack     = ()                     => api.post('/api/slack/disconnect');
-export const getSlackConnectUrl  = ()                     => `${import.meta.env.VITE_API_URL || ''}/api/slack/connect`;
+export const getSlackConnectUrl  = ()                     => `${getApiUrl()}/api/slack/connect`;
 
 export const scheduleEmails      = (formData: FormData) =>
   api.post('/api/emails/schedule', formData, { headers: { 'Content-Type': 'multipart/form-data' } });

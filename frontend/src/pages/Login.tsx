@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { emailLogin } from '../api';
 import { User } from '../types';
 
-const API_URL = import.meta.env.VITE_API_URL || '';
+const getApiUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && !envUrl.includes('localhost')) {
+    return envUrl.replace(/\/$/, '');
+  }
+  return '';
+};
 
 interface Props {
   setUser: (user: User | null) => void;
@@ -19,7 +25,7 @@ function Login({ setUser }: Props) {
     if (emailInput.trim()) {
       doEmailLogin(emailInput.trim());
     } else {
-      window.location.href = `${API_URL}/auth/google`;
+      window.location.href = `${getApiUrl()}/auth/google`;
     }
   };
 
