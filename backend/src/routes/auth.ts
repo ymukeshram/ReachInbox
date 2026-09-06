@@ -45,23 +45,6 @@ function getAppUrl(req: Request): string {
   return '';
 }
 
-// Temporary debug endpoint — shows what callback URL Google OAuth is using
-router.get('/debug', (_req, res) => {
-  const renderUrl = process.env.RENDER_EXTERNAL_URL || '(not set)';
-  const callbackUrl = process.env.RENDER_EXTERNAL_URL
-    ? `${process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '')}/auth/google/callback`
-    : (process.env.GOOGLE_CALLBACK_URL && !process.env.GOOGLE_CALLBACK_URL.includes('localhost')
-        ? process.env.GOOGLE_CALLBACK_URL
-        : 'http://localhost:3001/auth/google/callback');
-  res.json({
-    RENDER_EXTERNAL_URL: renderUrl,
-    GOOGLE_CALLBACK_URL_ENV: process.env.GOOGLE_CALLBACK_URL || '(not set)',
-    computed_callbackURL: callbackUrl,
-    hasGoogleClientId: !!process.env.GOOGLE_CLIENT_ID,
-    hasGoogleClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-  });
-});
-
 router.get('/google', (req: Request, res: Response, next: NextFunction) => {
   // Only bypass Google OAuth when credentials are genuinely not configured
   const hasGoogleCreds = process.env.GOOGLE_CLIENT_ID
