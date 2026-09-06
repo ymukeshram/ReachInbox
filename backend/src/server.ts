@@ -494,8 +494,12 @@ async function start() {
   try {
     if (isProd) validateEnv();
 
-    if (isProd) {
-      await redis.assertAvailable();
+    try {
+      if (isProd) {
+        await redis.assertAvailable();
+      }
+    } catch (redisErr: any) {
+      logger.warn({ error: redisErr?.message }, 'Redis check skipped/failed, using in-memory store fallback');
     }
 
     try {
