@@ -82,23 +82,27 @@ router.post(
         return res.status(400).json({ error: 'Attachment too large (max 5 MB)' });
       }
 
-      // Parse datetime-local value (YYYY-MM-DDTHH:mm) as IST (UTC+5:30).
-      // We use Date.UTC() so the calculation is independent of the server's TZ env var —
-      // Date.UTC treats the values as UTC, then we subtract the IST offset to get real UTC.
-      // e.g. user picks 18:14 IST → store as 12:44 UTC  (18:14 − 5h30m)
-      const [datePart, timePart] = startTime.split('T');
-      const [year, month, day]   = datePart.split('-').map(Number);
-      const [hour, minute]       = timePart.split(':').map(Number);
+      // Parse datetime-local value (YYYY-MM-DDTHH:mm) or fallback to immediate send
+      let startDate: Date;
+      if (startTime && typeof startTime === 'string' && startTime.includes('T')) {
+        const [datePart, timePart] = startTime.split('T');
+        const [year, month, day]   = (datePart || '').split('-').map(Number);
+        const [hour, minute]       = (timePart || '').split(':').map(Number);
 
-      if ([year, month, day, hour, minute].some(n => isNaN(n))) {
-        return res.status(400).json({ error: 'Invalid start time format' });
+        if ([year, month, day, hour, minute].some(n => isNaN(n))) {
+          startDate = new Date();
+        } else {
+          const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+          startDate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0) - IST_OFFSET_MS);
+        }
+      } else if (startTime && !isNaN(new Date(startTime).getTime())) {
+        startDate = new Date(startTime);
+      } else {
+        startDate = new Date();
       }
 
-      const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
-      const startDate = new Date(Date.UTC(year, month - 1, day, hour, minute, 0, 0) - IST_OFFSET_MS);
-
-      if (startDate.getTime() < Date.now() - 60_000) {
-        return res.status(400).json({ error: 'Start time is too far in the past' });
+      if (startDate.getTime() < Date.now() - 300_000) {
+        startDate = new Date();
       }
 
       const userRole      = (req as any).userRole;

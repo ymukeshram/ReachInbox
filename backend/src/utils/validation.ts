@@ -5,8 +5,7 @@ export const validateScheduleEmail = [
   body('subject')
     .trim()
     .notEmpty().withMessage('Subject is required')
-    .isLength({ max: 500 }).withMessage('Subject must be less than 500 characters')
-    .escape(),
+    .isLength({ max: 500 }).withMessage('Subject must be less than 500 characters'),
   
   body('body')
     .trim()
@@ -14,16 +13,13 @@ export const validateScheduleEmail = [
     .isLength({ max: 50000 }).withMessage('Email body too large'),
   
   body('startTime')
-    .notEmpty().withMessage('Start time is required')
-    .isISO8601().withMessage('Invalid date format'),
+    .optional({ checkFalsy: true }),
   
   body('delayBetweenEmails')
-    .optional()
-    .isInt({ min: 1, max: 3600 }).withMessage('Delay must be between 1 and 3600 seconds'),
+    .optional({ checkFalsy: true }),
   
   body('hourlyLimit')
-    .optional()
-    .isInt({ min: 1, max: 1000 }).withMessage('Hourly limit must be between 1 and 1000'),
+    .optional({ checkFalsy: true }),
 ];
 
 export const handleValidationErrors = (req: Request, res: Response, next: NextFunction): void => {

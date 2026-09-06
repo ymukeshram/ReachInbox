@@ -80,28 +80,49 @@ export default function ComposeModal({ onClose, onSuccess, initialTemplate, user
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!csvFile || loading) return;
+    if (loading) return;
+
+    let fileToUpload = csvFile;
+    if (!fileToUpload && emails.length > 0) {
+      fileToUpload = new File([emails.join('\n')], 'recipients.csv', { type: 'text/csv' });
+    }
+
+    if (!fileToUpload) {
+      setError('Please upload an email list file or select recipients.');
+      return;
+    }
+
+    if (!subject.trim()) {
+      setError('Subject is required.');
+      return;
+    }
+
+    if (!body.trim()) {
+      setError('Email body is required.');
+      return;
+    }
+
     setError(''); setSuccessInfo(null); setLoading(true);
 
     const fd = new FormData();
     fd.append('subject',            subject);
     fd.append('body',               body);
-    fd.append('file',               csvFile);
-    fd.append('startTime',          startTime);
-    fd.append('delayBetweenEmails', delayBetweenEmails);
-    fd.append('hourlyLimit',        hourlyLimit);
-    if (attachmentFile)      fd.append('attachment',   attachmentFile);
+    fd.append('file',               fileToUpload);
+    fd.append('startTime',          startTime || new Date().toISOString());
+    fd.append('delayBetweenEmails', delayBetweenEmails && parseInt(delayBetweenEmails) > 0 ? delayBetweenEmails : '1');
+    fd.append('hourlyLimit',        hourlyLimit && parseInt(hourlyLimit) > 0 ? hourlyLimit : '200');
+    if (attachmentFile)             fd.append('attachment', attachmentFile);
 
     try {
       const res = await scheduleEmails(fd);
       const { count, skipped = 0, filtered = 0, invalidEmails = [], spamScore } = res.data;
       setSuccessInfo({ count, skipped, filtered, invalidEmails, spamScore });
       onSuccess();
-      setTimeout(onClose, 4000);
+      setTimeout(onClose, 2500);
     } catch (err: any) {
       setError(friendlyError(err, "Couldn't schedule this email. Please try again."));
     } finally {
-      setTimeout(() => setLoading(false), 1000);
+      setTimeout(() => setLoading(false), 800);
     }
   };
 

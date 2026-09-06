@@ -11,14 +11,13 @@ interface Props {
 
 function Login({ setUser }: Props) {
   const navigate = useNavigate();
-  const [emailInput, setEmailInput] = useState('ymukeshram@gmail.com');
+  const [emailInput, setEmailInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleGoogleLogin = () => {
-    // If backend google OAuth URL is available, redirect to Google OAuth
-    if (import.meta.env.VITE_DEV_AUTH_BYPASS === 'true') {
-      doEmailLogin(emailInput || 'ymukeshram@gmail.com');
+    if (emailInput.trim()) {
+      doEmailLogin(emailInput.trim());
     } else {
       window.location.href = `${API_URL}/auth/google`;
     }
