@@ -46,11 +46,14 @@ function getAppUrl(req: Request): string {
 }
 
 router.get('/google', (req: Request, res: Response, next: NextFunction) => {
-  const host = req.get('host') || '';
-  const isRender = Boolean(process.env.RENDER_EXTERNAL_URL || (host && !host.includes('localhost')));
+  // Only bypass Google OAuth when credentials are genuinely not configured
+  const hasGoogleCreds = process.env.GOOGLE_CLIENT_ID
+    && !process.env.GOOGLE_CLIENT_ID.includes('dummy')
+    && process.env.GOOGLE_CLIENT_SECRET
+    && !process.env.GOOGLE_CLIENT_SECRET.includes('dummy');
 
-  // On production/Render deployment, authenticate user directly to prevent redirecting to localhost OAuth callback
-  if (isRender || !process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID.includes('dummy')) {
+  if (!hasGoogleCreds) {
+    // No real Google credentials — use demo login
     const user = {
       id: 'google_user_demo',
       email: 'ymukeshram@gmail.com',
