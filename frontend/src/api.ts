@@ -34,9 +34,9 @@ api.interceptors.response.use(
   },
   (err: AxiosError) => {
     stopProgress();
-    if (err.response?.status === 401 && window.location.pathname !== '/' && !isRedirectingToHome) {
+    if (err.response?.status === 401 && window.location.pathname !== '/' && window.location.pathname !== '/login' && !isRedirectingToHome) {
       isRedirectingToHome = true;
-      window.location.href = '/';
+      window.location.href = '/login';
     }
     console.error('API Error:', { url: err.config?.url, status: err.response?.status, message: err.message });
     return Promise.reject(err);
@@ -44,6 +44,7 @@ api.interceptors.response.use(
 );
 
 export const getUser             = () => api.get('/auth/user', { timeout: 5_000 });
+export const emailLogin          = (email: string, name?: string) => api.post('/auth/email-login', { email, name });
 export const logout              = () => api.post('/auth/logout');
 
 export const getSubscription     = () => api.get('/api/payment/subscription');

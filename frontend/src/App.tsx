@@ -9,13 +9,20 @@ import { User } from './types';
 const devAuthBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true';
 const devUser: User = {
   id: 'dev-user',
-  email: 'oliver.brown@domain.io',
-  name: 'Oliver Brown',
+  email: 'ymukeshram@gmail.com',
+  name: 'Mukesh Ram',
   avatar: ''
 };
 
 function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('reachinbox_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [startupPct, setStartupPct] = useState(4);
 
@@ -28,15 +35,23 @@ function App() {
     }
 
     const startedAt = Date.now();
-    const startupTimeoutMs = 5000;
+    const startupTimeoutMs = 2000;
     const timeout = setTimeout(() => setLoading(false), startupTimeoutMs);
     const tick = setInterval(() => {
       setStartupPct(Math.min(96, Math.round(((Date.now() - startedAt) / startupTimeoutMs) * 100)));
     }, 100);
 
     getUser()
-      .then((res) => setUser(res.data))
-      .catch(() => setUser(null))
+      .then((res) => {
+        setUser(res.data);
+        localStorage.setItem('reachinbox_user', JSON.stringify(res.data));
+      })
+      .catch(() => {
+        // If API fails, keep user from localStorage if present
+        if (!localStorage.getItem('reachinbox_user')) {
+          setUser(null);
+        }
+      })
       .finally(() => {
         clearTimeout(timeout);
         clearInterval(tick);
@@ -44,21 +59,9 @@ function App() {
         setTimeout(() => setLoading(false), 150);
       });
 
-    const sessionRefresh = setInterval(() => {
-      if (window.location.pathname === '/dashboard') {
-        getUser()
-          .then((res) => setUser(res.data))
-          .catch(() => {
-            setUser(null);
-            window.location.href = '/';
-          });
-      }
-    }, 5 * 60 * 1000);
-
     return () => {
       clearTimeout(timeout);
       clearInterval(tick);
-      clearInterval(sessionRefresh);
     };
   }, []);
 
@@ -72,7 +75,7 @@ function App() {
           <div>
             <p className="text-gray-800 dark:text-gray-200 font-semibold text-lg">Starting up ReachInbox</p>
             <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
-              Just a moment — we're getting everything ready (up to 60 seconds).
+              Just a moment — we're getting everything ready.
             </p>
           </div>
           <div className="w-full max-w-[220px] h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
@@ -90,10 +93,10 @@ function App() {
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <TopProgressBar />
       <Routes>
-        <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
-        <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
-        <Route path="/dashboard" element={user ? <Dashboard user={user} setUser={setUser} /> : <Navigate to="/" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Login setUser={setUser} />} />
+        <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login setUser={setUser} />} />
+        <Route path="/dashboard" element={user ? <Dashboard user={user} setUser={(u) => { setUser(u); if(!u) localStorage.removeItem('reachinbox_user'); }} /> : <Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>
   );

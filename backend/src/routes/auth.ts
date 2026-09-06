@@ -63,10 +63,52 @@ router.get(
 );
 
 router.get('/user', (req, res) => {
-  if (req.isAuthenticated()) {
+  if (req.isAuthenticated && req.isAuthenticated()) {
     res.json(req.user);
   } else {
     res.status(401).json({ error: 'Not authenticated' });
+  }
+});
+
+router.post('/email-login', async (req: Request, res: Response) => {
+  try {
+    const { email, name } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    const cleanEmail = email.trim().toLowerCase();
+    const userName = name || cleanEmail.split('@')[0];
+    const userId = 'user_' + crypto.createHash('md5').update(cleanEmail).digest('hex').substring(0, 12);
+    const user = {
+      id: userId,
+      email: cleanEmail,
+      name: userName,
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=00b06b&color=fff`
+    };
+
+    try {
+      await pool.query(
+        `INSERT INTO users (id, email, name, avatar, last_login)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name,
+           avatar = EXCLUDED.avatar,
+           last_login = NOW()`,
+        [user.id, user.email, user.name, user.avatar]
+      );
+    } catch (dbErr: any) {
+      logger.warn({ error: dbErr.message }, 'DB upsert failed during email-login');
+    }
+
+    req.logIn(user, (loginErr) => {
+      if (loginErr) {
+        logger.error({ error: loginErr.message }, 'req.logIn error in email-login');
+      }
+      return res.json(user);
+    });
+  } catch (err: any) {
+    logger.error({ error: err.message }, 'email-login error');
+    return res.status(500).json({ error: 'Email login failed' });
   }
 });
 

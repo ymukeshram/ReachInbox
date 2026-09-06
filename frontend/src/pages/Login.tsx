@@ -1,21 +1,63 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { emailLogin } from '../api';
+import { User } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-function Login() {
+interface Props {
+  setUser: (user: User | null) => void;
+}
+
+function Login({ setUser }: Props) {
   const navigate = useNavigate();
+  const [emailInput, setEmailInput] = useState('ymukeshram@gmail.com');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const handleGoogleLogin = () => {
+    // If backend google OAuth URL is available, redirect to Google OAuth
     if (import.meta.env.VITE_DEV_AUTH_BYPASS === 'true') {
-      navigate('/dashboard');
+      doEmailLogin(emailInput || 'ymukeshram@gmail.com');
     } else {
       window.location.href = `${API_URL}/auth/google`;
     }
   };
 
+  const doEmailLogin = async (targetEmail: string) => {
+    if (!targetEmail.trim()) {
+      setErrorMsg('Please enter a valid email address.');
+      return;
+    }
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await emailLogin(targetEmail.trim());
+      const userData: User = res.data;
+      setUser(userData);
+      localStorage.setItem('reachinbox_user', JSON.stringify(userData));
+      navigate('/dashboard');
+    } catch (err: any) {
+      // Fallback local login if API is unreachable
+      const cleanEmail = targetEmail.trim().toLowerCase();
+      const userName = cleanEmail.split('@')[0];
+      const fallbackUser: User = {
+        id: 'user_' + cleanEmail,
+        email: cleanEmail,
+        name: userName,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=00b06b&color=fff`
+      };
+      setUser(fallbackUser);
+      localStorage.setItem('reachinbox_user', JSON.stringify(fallbackUser));
+      navigate('/dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleEmailLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    navigate('/dashboard');
+    doEmailLogin(emailInput);
   };
 
   return (
@@ -37,6 +79,12 @@ function Login() {
 
         <h1 className="text-[20px] font-semibold text-gray-900 dark:text-white mb-6">Login</h1>
 
+        {errorMsg && (
+          <div className="w-full mb-4 px-3 py-2 bg-red-50 text-red-600 text-sm rounded-lg text-center">
+            {errorMsg}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleGoogleLogin}
@@ -53,7 +101,7 @@ function Login() {
 
         <div className="w-full flex items-center justify-center my-6 gap-3">
           <div className="h-[1px] flex-1 bg-gray-200 dark:bg-gray-800" />
-          <span className="text-[13px] text-gray-400 dark:text-gray-500">or sign up through email</span>
+          <span className="text-[13px] text-gray-400 dark:text-gray-500">or login with email</span>
           <div className="h-[1px] flex-1 bg-gray-200 dark:bg-gray-800" />
         </div>
 
@@ -61,20 +109,23 @@ function Login() {
           <input
             type="email"
             placeholder="Email ID"
-            defaultValue="user@example.com"
-            className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors text-[15px]"
+            value={emailInput}
+            onChange={e => setEmailInput(e.target.value)}
+            required
+            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors text-[15px]"
           />
           <input
             type="password"
             placeholder="Password"
             defaultValue="••••••••"
-            className="w-full bg-gray-50 dark:bg-gray-900 border-none rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors text-[15px]"
+            className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors text-[15px]"
           />
           <button 
             type="submit"
-            className="w-full mt-2 bg-[#00b06b] hover:bg-[#009b5a] text-white py-3 rounded-lg font-medium text-[15px] transition-colors shadow-[0_4px_14px_rgba(0,176,107,0.3)]"
+            disabled={loading}
+            className="w-full mt-2 bg-[#00b06b] hover:bg-[#009b5a] text-white py-3 rounded-lg font-medium text-[15px] transition-colors shadow-[0_4px_14px_rgba(0,176,107,0.3)] disabled:opacity-50"
           >
-            Login
+            {loading ? 'Logging in...' : 'Login'}
           </button>
         </form>
         

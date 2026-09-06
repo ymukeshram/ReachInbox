@@ -12,6 +12,7 @@ import { checkEmailLimit, requirePermission, ROLE_PERMISSIONS, getUserRole } fro
 import { getPagination } from '../utils/pagination';
 import { toCsv } from '../utils/csv';
 import { esClient } from '../config/elasticsearch';
+import { sendEmail } from '../services/emailService';
 
 const MAX_EMAILS_PER_HOUR  = parseInt(
   process.env.MAX_EMAILS_PER_HOUR_PER_SENDER || process.env.MAX_EMAILS_PER_HOUR || '200'
@@ -294,9 +295,18 @@ router.post(
           );
         }
 
-        await Promise.all(
-          jobsToQueue.map(j => emailQueue.add('send-email', j.data, { delay: j.delay, jobId: j.id }))
-        );
+        try {
+          await Promise.all(
+            jobsToQueue.map(j => emailQueue.add('send-email', j.data, { delay: j.delay, jobId: j.id }))
+          );
+        } catch (queueErr: any) {
+          logger.warn({ error: queueErr.message }, 'Failed to queue in BullMQ, directly triggering email sends');
+          jobsToQueue.forEach(j => {
+            sendEmail(j.data.recipientEmail, j.data.subject, j.data.body, { emailId: j.id })
+              .then(() => pool.query(`UPDATE emails SET status='sent', sent_at=NOW() WHERE id=$1`, [j.id]))
+              .catch((e) => pool.query(`UPDATE emails SET status='failed', error_message=$1 WHERE id=$2`, [e.message, j.id]));
+          });
+        }
         await client.query('COMMIT');
         
         // Index scheduled emails into Elasticsearch

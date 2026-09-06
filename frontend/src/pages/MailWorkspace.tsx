@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import ComposeModal from '../components/ComposeModal';
-import { getScheduledEmails, getSentEmails, getSlackStatus, disconnectSlack, getSlackConnectUrl } from '../api';
+import { getScheduledEmails, getSentEmails, getSlackStatus, disconnectSlack, getSlackConnectUrl, logout } from '../api';
 import { User, ScheduledEmail, SentEmail } from '../types';
 
 interface Props {
@@ -10,18 +10,6 @@ interface Props {
 
 type Tab = 'scheduled' | 'sent';
 type Mail = ScheduledEmail | SentEmail;
-
-const devAuthBypass = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true';
-
-const demoScheduled: ScheduledEmail[] = [
-  { id: 'demo-scheduled-1', recipient_email: 'john.smith@company.com', subject: 'Meeting follow-up', body: 'Hi John, just wanted to follow up on our meeting.', scheduled_at: new Date(Date.now() + 86400000).toISOString(), status: 'scheduled' },
-  { id: 'demo-scheduled-2', recipient_email: 'support@domain.io', subject: 'Issue with login', body: 'I am having trouble logging in to the dashboard.', scheduled_at: new Date(Date.now() + 172800000).toISOString(), status: 'scheduled' }
-];
-
-const demoSent: SentEmail[] = [
-  { id: 'demo-sent-1', recipient_email: 'amanda.clark@example.com', subject: 'Project Proposal & Timeline', body: '<p>Hi Amanda,</p><p>Please find attached our latest project proposal and timeline for Q4.</p><p>Best regards,<br/>ReachInbox Team</p>', sent_at: new Date().toISOString(), status: 'sent' },
-  { id: 'demo-sent-2', recipient_email: 'sarah.wilson@example.com', subject: 'Re: Project Update', body: 'Thanks for the update, Sarah. Looks good!', sent_at: new Date(Date.now() - 86400000).toISOString(), status: 'sent' }
-];
 
 function getMailTimestamp(m: Mail): string | null {
   if ('scheduled_at' in m && m.scheduled_at) return m.scheduled_at;
@@ -44,13 +32,8 @@ export default function MailWorkspace({ user, setUser }: Props) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadMail = () => {
-    if (devAuthBypass) {
-      setScheduled(demoScheduled);
-      setSent(demoSent);
-      return;
-    }
-    getScheduledEmails(1, 50).then(response => setScheduled(response.data.data || response.data)).catch(() => {});
-    getSentEmails(1, 50).then(response => setSent(response.data.data || response.data)).catch(() => {});
+    getScheduledEmails(1, 50).then(response => setScheduled(response.data.data || response.data || [])).catch(() => setScheduled([]));
+    getSentEmails(1, 50).then(response => setSent(response.data.data || response.data || [])).catch(() => setSent([]));
   };
 
   const handleRefresh = async () => {
@@ -62,7 +45,6 @@ export default function MailWorkspace({ user, setUser }: Props) {
   useEffect(() => { loadMail(); }, []);
 
   useEffect(() => {
-    if (devAuthBypass) return;
     getSlackStatus().then(response => {
       setSlackConnected(Boolean(response.data.connected));
       setSlackTeam(response.data.teamName || null);
@@ -153,8 +135,8 @@ export default function MailWorkspace({ user, setUser }: Props) {
     return list;
   }, [messages, query, starredIds, filterType]);
 
-  const displayName = user?.name || 'Oliver Brown';
-  const displayEmail = user?.email || 'oliver.brown@domain.io';
+  const displayEmail = user?.email || 'me@domain.com';
+  const displayName = user?.name || (user?.email ? user.email.split('@')[0] : 'User');
 
   return (
     <main className={selectedMail ? 'mail-app detail-view' : 'mail-app'}>
@@ -190,7 +172,7 @@ export default function MailWorkspace({ user, setUser }: Props) {
             </span>
           </button>
         </nav>
-        <button className="logout-link" onClick={() => setUser(null)}>Log out</button>
+        <button className="logout-link" onClick={() => { logout().catch(() => {}); localStorage.removeItem('reachinbox_user'); setUser(null); }}>Log out</button>
       </aside>
 
       <section className="mail-content">
