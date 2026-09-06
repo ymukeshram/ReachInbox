@@ -30,8 +30,23 @@ function isPublicWebhookUrl(url: string): boolean {
   }
 }
 
+function getAppUrl(req: Request): string {
+  if (process.env.RENDER_EXTERNAL_URL) {
+    return process.env.RENDER_EXTERNAL_URL.replace(/\/$/, '');
+  }
+  const host = req.get('host');
+  if (host && !host.includes('localhost')) {
+    const proto = req.get('x-forwarded-proto') || req.protocol || 'https';
+    return `${proto}://${host}`;
+  }
+  if (process.env.FRONTEND_URL && !process.env.FRONTEND_URL.includes('localhost')) {
+    return process.env.FRONTEND_URL.replace(/\/$/, '');
+  }
+  return '';
+}
+
 router.get('/google', (req: Request, res: Response, next: NextFunction) => {
-  const appUrl = process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || '';
+  const appUrl = getAppUrl(req);
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId || clientId === 'dummy-client-id') {
     const user = {
@@ -51,22 +66,20 @@ router.get('/google', (req: Request, res: Response, next: NextFunction) => {
 router.get(
   '/google/callback',
   (req: Request, res: Response, next: NextFunction) => {
-    // FRONTEND_URL takes priority; fall back to RENDER_EXTERNAL_URL so OAuth
-    // works when the frontend is served directly from this backend service.
-    const appUrl = process.env.FRONTEND_URL || process.env.RENDER_EXTERNAL_URL || '';
+    const appUrl = getAppUrl(req);
     passport.authenticate('google', (err: any, user: any) => {
       if (err) {
         logger.error({ error: err.message }, 'Google OAuth error');
-        return res.redirect(`${appUrl}?error=oauth_failed`);
+        return res.redirect(`${appUrl}/login?error=oauth_failed`);
       }
       if (!user) {
         logger.warn('Google OAuth: no user returned');
-        return res.redirect(`${appUrl}?error=no_user`);
+        return res.redirect(`${appUrl}/login?error=no_user`);
       }
       req.logIn(user, (loginErr) => {
         if (loginErr) {
           logger.error({ error: loginErr.message }, 'Session login error');
-          return res.redirect(`${appUrl}?error=session_failed`);
+          return res.redirect(`${appUrl}/login?error=session_failed`);
         }
         logger.info({ userId: user.id }, 'User logged in successfully');
         res.redirect(`${appUrl}/dashboard`);
