@@ -21,11 +21,7 @@ function Login({ setUser }: Props) {
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleGoogleLogin = () => {
-    if (emailInput.trim()) {
-      doEmailLogin(emailInput.trim());
-    } else {
-      window.location.href = `${getApiUrl()}/auth/google`;
-    }
+    window.location.href = `${getApiUrl()}/auth/google`;
   };
 
   const doEmailLogin = async (targetEmail: string) => {
