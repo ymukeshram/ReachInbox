@@ -121,7 +121,6 @@ function Login({ setUser }: Props) {
           <input
             type="password"
             placeholder="Password"
-            defaultValue="••••••••"
             className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-4 py-3 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-colors text-[15px]"
           />
           <button 

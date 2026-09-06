@@ -47,9 +47,8 @@ function App() {
         localStorage.setItem('reachinbox_user', JSON.stringify(res.data));
       })
       .catch(() => {
-        if (!localStorage.getItem('reachinbox_user')) {
-          setUser(null);
-        }
+        localStorage.removeItem('reachinbox_user');
+        setUser(null);
       })
       .finally(() => {
         clearTimeout(timeout);

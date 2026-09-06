@@ -154,10 +154,10 @@ const sessionMiddleware = session({
   proxy: true, // Trust proxy for secure cookies
   cookie: {
     secure: isProd, // HTTPS only in production
-    sameSite: isProd ? 'none' : 'lax', // 'none' required for cross-origin in production
+    sameSite: 'lax', // Same-origin deployment on Render — 'lax' is correct
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     httpOnly: true,
-    domain: isProd ? undefined : undefined // Let browser handle domain
+    domain: undefined // Let browser handle domain
   },
   name: 'sessionId' // Custom session cookie name
 });

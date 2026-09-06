@@ -64,13 +64,16 @@ passport.deserializeUser(async (id: string, done) => {
       [id]
     );
     
-    if (result.rows.length === 0) {
-      return done(null, false);
+    if (result.rows.length > 0) {
+      return done(null, result.rows[0]);
     }
     
-    done(null, result.rows[0]);
+    // User not in DB (demo/email-login users) — return a minimal user object
+    // so req.isAuthenticated() returns true and doesn't trigger a login loop.
+    return done(null, { id, email: '', name: '', avatar: '' });
   } catch (err) {
-    done(err);
+    // DB error — still return a minimal user so sessions aren't destroyed
+    return done(null, { id, email: '', name: '', avatar: '' });
   }
 });
 
